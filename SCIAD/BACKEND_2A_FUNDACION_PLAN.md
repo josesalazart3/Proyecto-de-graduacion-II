@@ -148,6 +148,14 @@ Marca cada casilla al completarla. No pases a la Fase 2B hasta que todo esto est
 
 *(Claude Code: agrega aquí una entrada nueva cada vez que trabajes en este proyecto)*
 
+### 2026-08-30 — Confirmación del tipo de persona (INTEGER 1/2) + CHECK en BD
+
+El usuario confirmó que `personas.tipo` debe guardarse como **1=colaborador, 2=visitante (INTEGER)** — la decisión ya tomada siguiendo el diccionario DERCAS §7.2 (no el `VARCHAR(20)` del diagrama ER). Para garantizarlo no solo por convención se endureció el esquema:
+
+- **`Persona`**: constantes `TipoColaborador = 1`, `TipoVisitante = 2` en el dominio, y el comentario de `Tipo` ahora cita el CHECK.
+- **Migración `20260830143837_AddPersonasTipoCheck`**: agrega `CHECK (tipo IN (1, 2))` sobre `public.personas` (mismo patrón de `CK_registros_acceso_tipo`, DERCAS §7.4).
+- **Verificado contra el Postgres real**: la restricción existe (`CHECK (tipo = ANY (ARRAY[1, 2]))`), `INSERT tipo=1` funciona, `INSERT tipo=99` es **rechazado** por la BD, y la fila de prueba se limpió (`personas` vuelve a 0 registros).
+
 ### 2026-08-30 — Fase 2A completada y verificada de punta a punta
 
 **Construido**

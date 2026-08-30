@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sciad.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Sciad.Infrastructure.Persistence;
 namespace Sciad.Infrastructure.Migrations
 {
     [DbContext(typeof(SciadDbContext))]
-    partial class SciadDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260830143837_AddPersonasTipoCheck")]
+    partial class AddPersonasTipoCheck
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

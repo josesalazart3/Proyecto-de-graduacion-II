@@ -67,6 +67,9 @@ public class SciadDbContext : DbContext
             e.Property(p => p.DpiCodigo).HasMaxLength(20).IsRequired();
             e.Property(p => p.Estado).HasMaxLength(20).HasDefaultValue("activo");
 
+            // CHECK IN (1, 2) — 1 = colaborador, 2 = visitante (DERCAS §7.2/§7.4)
+            e.ToTable(t => t.HasCheckConstraint("CK_personas_tipo", "tipo IN (1, 2)"));
+
             e.HasIndex(p => p.DpiCodigo).IsUnique();
         });
 
