@@ -3,7 +3,7 @@ using Sciad.Domain.Entities;
 namespace Sciad.Application.Interfaces;
 
 /// <summary>
-/// Acceso de lectura a usuarios para autenticación. Implementado en Infrastructure (EF Core).
+/// Acceso a usuarios: autenticación (lectura) + CRUD administrativo. Implementado en Infrastructure (EF Core).
 /// </summary>
 public interface IUsuarioRepository
 {
@@ -12,4 +12,19 @@ public interface IUsuarioRepository
 
     /// <summary>Busca por id incluyendo el rol.</summary>
     Task<Usuario?> FindByIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Lista paginada de usuarios (con rol) y total de registros que coinciden.</summary>
+    Task<(IReadOnlyList<Usuario> Items, int Total)> ListarPaginadoAsync(
+        int pagina, int tamanoPagina, CancellationToken ct = default);
+
+    /// <summary>¿Existe un usuario con este correo? Si <paramref name="excluirId"/> se pasa, lo ignora (útil para edición).</summary>
+    Task<bool> ExisteCorreoAsync(string correo, int? excluirId = null, CancellationToken ct = default);
+
+    /// <summary>Busca un rol por su código de máquina (ADMIN/SEGURIDAD/GERENCIA).</summary>
+    Task<Rol?> FindRolByCodigoAsync(string codigo, CancellationToken ct = default);
+
+    Task<Usuario> AgregarAsync(Usuario usuario, CancellationToken ct = default);
+
+    /// <summary>Persiste los cambios de una entidad ya rastreada por el contexto.</summary>
+    Task<Usuario> ActualizarAsync(Usuario usuario, CancellationToken ct = default);
 }

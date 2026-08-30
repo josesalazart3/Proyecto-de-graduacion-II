@@ -11,6 +11,11 @@ public static class DependencyInjection
     {
         services.AddSingleton<ITokenService, TokenService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUsuariosService, UsuariosService>();
+        services.AddScoped<IPersonasService, PersonasService>();
+        services.AddScoped<IZonasService, ZonasService>();
+        services.AddScoped<IPerfilesAccesoService, PerfilesAccesoService>();
+        services.AddScoped<ICredencialesService, CredencialesService>();
         return services;
     }
 }

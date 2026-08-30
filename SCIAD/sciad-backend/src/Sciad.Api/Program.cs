@@ -29,7 +29,26 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptio
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// Respuesta 400 de validación de modelo también con Problem Details consistente (code + message).
 builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = context =>
+    {
+        var mensaje = context.ModelState.Values
+            .SelectMany(v => v.Errors)
+            .FirstOrDefault()?.ErrorMessage ?? "Solicitud inválida.";
+        var pd = new Microsoft.AspNetCore.Mvc.ProblemDetails
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Solicitud inválida",
+            Detail = mensaje,
+        };
+        pd.Extensions["code"] = "VALIDACION";
+        pd.Extensions["message"] = mensaje;
+        return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(pd)
+        {
+            ContentTypes = { JsonDefaults.ContentType },
+        };
+    })
     .AddJsonOptions(o => o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
 builder.Services.AddProblemDetails();

@@ -1,0 +1,95 @@
+using Microsoft.Extensions.Logging;
+using Sciad.Application.Dtos.PerfilesAcceso;
+using Sciad.Application.Interfaces;
+using Sciad.Domain.Entities;
+
+namespace Sciad.Application.Services;
+
+/// <summary>
+/// Perfiles de acceso (CU-02): asigna zona + vigencia a una persona. Valida que la persona y la
+/// zona existan, que la persona esté activa y que <c>vigencia_fin &gt;= vigencia_inicio</c>.
+/// La baja se hace con <c>DELETE</c> físico: <c>perfiles_acceso</c> es una tabla de asignación
+/// (no histórica) sin columna <c>estado</c> — DERCAS §7.4 solo exige soft-delete en
+/// usuarios/personas/credenciales_qr (decisión anotada en bitácora 2B).
+/// </summary>
+public sealed class PerfilesAccesoService : IPerfilesAccesoService
+{
+    private readonly IPerfilAccesoRepository _perfiles;
+    private readonly IPersonaRepository _personas;
+    private readonly IZonaRepository _zonas;
+    private readonly ILogger<PerfilesAccesoService> _logger;
+
+    public PerfilesAccesoService(
+        IPerfilAccesoRepository perfiles,
+        IPersonaRepository personas,
+        IZonaRepository zonas,
+        ILogger<PerfilesAccesoService> logger)
+    {
+        _perfiles = perfiles;
+        _personas = personas;
+        _zonas = zonas;
+        _logger = logger;
+    }
+
+    public async Task<ServicioResultado<List<PerfilAccesoDto>>> ListarAsync(
+        int? personaId, int? zonaId, CancellationToken ct = default)
+    {
+        var perfiles = await _perfiles.ListarAsync(personaId, zonaId, ct);
+        return ServicioResultado<List<PerfilAccesoDto>>.Ok(perfiles.Select(PerfilAccesoDto.From).ToList());
+    }
+
+    public async Task<ServicioResultado<PerfilAccesoDto>> CrearAsync(
+        CrearPerfilAccesoRequest req, CancellationToken ct = default)
+    {
+        if (req.VigenciaFin < req.VigenciaInicio)
+        {
+            return ServicioResultado<PerfilAccesoDto>.Fallo(
+                CodigosError.Validacion, "La vigencia final no puede ser anterior a la inicial.");
+        }
+
+        var persona = await _personas.FindByIdAsync(req.PersonaId, ct);
+        if (persona is null)
+        {
+            return ServicioResultado<PerfilAccesoDto>.Fallo(CodigosError.NoEncontrado, "Persona no encontrada.");
+        }
+
+        if (!string.Equals(persona.Estado, "activo", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServicioResultado<PerfilAccesoDto>.Fallo(
+                CodigosError.Validacion, "La persona debe estar activa para asignarle un perfil de acceso.");
+        }
+
+        var zona = await _zonas.FindByIdAsync(req.ZonaId, ct);
+        if (zona is null)
+        {
+            return ServicioResultado<PerfilAccesoDto>.Fallo(CodigosError.NoEncontrado, "Zona no encontrada.");
+        }
+
+        var perfil = new PerfilAcceso
+        {
+            PersonaId = persona.Id,
+            ZonaId = zona.Id,
+            VigenciaInicio = req.VigenciaInicio,
+            VigenciaFin = req.VigenciaFin,
+        };
+
+        var creado = await _perfiles.AgregarAsync(perfil, ct);
+        _logger.LogInformation(
+            "Perfil de acceso creado (id={PerfilId}, persona={PersonaId}, zona={ZonaId}).",
+            creado.Id, persona.Id, zona.Id);
+        return ServicioResultado<PerfilAccesoDto>.Ok(PerfilAccesoDto.From(creado));
+    }
+
+    public async Task<ServicioResultado<bool>> EliminarAsync(int id, CancellationToken ct = default)
+    {
+        var perfil = await _perfiles.FindByIdAsync(id, ct);
+        if (perfil is null)
+        {
+            return ServicioResultado<bool>.Fallo(CodigosError.NoEncontrado, "Perfil de acceso no encontrado.");
+        }
+
+        await _perfiles.EliminarAsync(perfil, ct);
+        _logger.LogInformation("Perfil de acceso eliminado (id={PerfilId}).", id);
+        return ServicioResultado<bool>.Ok(true);
+    }
+}

@@ -28,4 +28,48 @@ public sealed class UsuarioRepository : IUsuarioRepository
             .Include(u => u.Rol)
             .FirstOrDefaultAsync(u => u.Id == id, ct);
     }
+
+    public async Task<(IReadOnlyList<Usuario> Items, int Total)> ListarPaginadoAsync(
+        int pagina, int tamanoPagina, CancellationToken ct = default)
+    {
+        var query = _db.Usuarios.AsNoTracking().Include(u => u.Rol);
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(u => u.Id)
+            .Skip((pagina - 1) * tamanoPagina)
+            .Take(tamanoPagina)
+            .ToListAsync(ct);
+        return (items, total);
+    }
+
+    public Task<bool> ExisteCorreoAsync(string correo, int? excluirId = null, CancellationToken ct = default)
+    {
+        var normalizado = correo.Trim().ToLowerInvariant();
+        var query = _db.Usuarios.Where(u => u.Correo.ToLower() == normalizado);
+        if (excluirId.HasValue)
+        {
+            query = query.Where(u => u.Id != excluirId.Value);
+        }
+
+        return query.AnyAsync(ct);
+    }
+
+    public Task<Rol?> FindRolByCodigoAsync(string codigo, CancellationToken ct = default)
+    {
+        var normalizado = codigo.Trim().ToUpperInvariant();
+        return _db.Roles.FirstOrDefaultAsync(r => r.Codigo.ToUpper() == normalizado, ct);
+    }
+
+    public async Task<Usuario> AgregarAsync(Usuario usuario, CancellationToken ct = default)
+    {
+        _db.Usuarios.Add(usuario);
+        await _db.SaveChangesAsync(ct);
+        return usuario;
+    }
+
+    public async Task<Usuario> ActualizarAsync(Usuario usuario, CancellationToken ct = default)
+    {
+        await _db.SaveChangesAsync(ct);
+        return usuario;
+    }
 }

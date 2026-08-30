@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Sciad.Application.Services;
 
 namespace Sciad.Api.Common;
 
@@ -18,8 +19,25 @@ public static class ApiProblem
     public static ObjectResult NotFound(string message) =>
         Problem(StatusCodes.Status404NotFound, "No encontrado", message, "NOT_FOUND");
 
+    public static ObjectResult Conflict(string message) =>
+        Problem(StatusCodes.Status409Conflict, "Conflicto", message, "CONFLICT");
+
     public static ObjectResult BadRequest(string message, string code) =>
         Problem(StatusCodes.Status400BadRequest, "Solicitud inválida", message, code);
+
+    /// <summary>
+    /// Mapea un <see cref="ServicioResultado{T}"/> fallido a una respuesta Problem Details:
+    /// el <see cref="CodigosError"/> decide el código HTTP (404/409/400).
+    /// </summary>
+    public static ObjectResult FromServicio<T>(ServicioResultado<T> resultado)
+    {
+        return resultado.CodigoError switch
+        {
+            CodigosError.NoEncontrado => NotFound(resultado.Mensaje ?? "Recurso no encontrado."),
+            CodigosError.Conflicto => Conflict(resultado.Mensaje ?? "Conflicto con un recurso existente."),
+            _ => BadRequest(resultado.Mensaje ?? "Solicitud inválida.", CodigosError.Validacion),
+        };
+    }
 
     private static ObjectResult Problem(int status, string title, string detail, string code)
     {

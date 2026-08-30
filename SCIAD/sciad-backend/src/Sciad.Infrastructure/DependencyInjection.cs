@@ -21,6 +21,10 @@ public static class DependencyInjection
                    .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IUsuarioRepository, UsuarioRepository>();
+        services.AddScoped<IPersonaRepository, PersonaRepository>();
+        services.AddScoped<IZonaRepository, ZonaRepository>();
+        services.AddScoped<IPerfilAccesoRepository, PerfilAccesoRepository>();
+        services.AddScoped<ICredencialRepository, CredencialRepository>();
         services.AddScoped<DbSeeder>();
 
         return services;
