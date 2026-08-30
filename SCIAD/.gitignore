@@ -1,0 +1,7 @@
+# Secretos locales (nunca versionar)
+.env
+*.env.local
+
+# .NET
+sciad-backend/bin/
+sciad-backend/obj/

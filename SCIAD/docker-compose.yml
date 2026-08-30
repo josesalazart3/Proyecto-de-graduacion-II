@@ -1,14 +1,14 @@
 # ============================================================
 # SCIAD — docker-compose
 #
-# Fase 1: solo el frontend (datos mock). Levanta con:
-#   docker compose up --build
-#   → http://localhost:8080
+# Fase 2A: levanta frontend (Angular, mock), backend (.NET API)
+# y base de datos (PostgreSQL 16) con healthchecks reales.
 #
-# Fase 2: descomenta los servicios `backend` y `db` de abajo,
-# apunta nginx a `http://backend:3000` (ya dejado comentado en
-# nginx.conf) y cambia `environment.apiUrl` en el frontend.
+#   docker compose up --build
+#   → Frontend  : http://localhost:8080
+#   → API       : http://localhost:3000   (Swagger: /swagger)
 # ============================================================
+
 services:
   frontend:
     build:
@@ -18,40 +18,55 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+    healthcheck:
+      # 127.0.0.1 (no "localhost"): nginx escucha solo en IPv4 y "localhost"
+      # resuelve a ::1 dentro del contenedor → el chequeo fallaría sin motivo real.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
-  # ---- FASE 2: Backend (API REST) ----
-  # Infraestructura y puertos dependen del stack elegido en Fase 2
-  # (ej. NestJS/Express + MongoDB/PostgreSQL). Ejemplo ilustrativo:
-  #
-  # backend:
-  #   build:
-  #     context: ./sciad-backend
-  #     dockerfile: Dockerfile
-  #   container_name: sciad-backend
-  #   environment:
-  #     - DATABASE_URL=mongodb://db:27017/sciad
-  #     - JWT_SECRET=change-me-in-prod
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   ports:
-  #     - "3000:3000"
-  #   restart: unless-stopped
+  # ---- FASE 2A: Backend (API REST .NET 8) ----
+  backend:
+    build:
+      context: ./sciad-backend
+      dockerfile: Dockerfile
+    container_name: sciad-backend
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__Postgres=Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - Jwt__Secreto=${SCIAD_JWT_SECRET}
+      - Cors__Origins=${SCIAD_CORS_ORIGINS}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+    healthcheck:
+      # Confirma que la API responde y que la BD está operativa (GET /api/health).
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
-  # ---- FASE 2: Base de datos ----
-  # db:
-  #   image: mongo:7
-  #   container_name: sciad-db
-  #   volumes:
-  #     - sciad-db-data:/data/db
-  #   healthcheck:
-  #     test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   restart: unless-stopped
+  # ---- FASE 2A: Base de datos ----
+  db:
+    image: postgres:16-alpine
+    container_name: sciad-db
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - sciad-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
-  # volumes:
-  #   sciad-db-data:
-
-# Redes / volúmenes compartidos para la Fase 2 se agregan aquí.
+volumes:
+  sciad-db-data:
