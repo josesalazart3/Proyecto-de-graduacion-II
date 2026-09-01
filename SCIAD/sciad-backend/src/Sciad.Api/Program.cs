@@ -111,6 +111,10 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireAdmin", p => p.RequireRole("ADMIN"));
     options.AddPolicy("RequireSeguridad", p => p.RequireRole("SEGURIDAD"));
     options.AddPolicy("RequireGerencia", p => p.RequireRole("GERENCIA"));
+    // Escaneo QR (CU-04) y accesos del día (CU-05): Personal de Seguridad O Administrador.
+    options.AddPolicy("RequireSeguridadOAdmin", p => p.RequireRole("SEGURIDAD", "ADMIN"));
+    // Trazabilidad (CU-06), auditoría (CU-08) y reportes (CU-07): Administrador O Gerencia/Auditoría.
+    options.AddPolicy("RequireAdminOGerencia", p => p.RequireRole("ADMIN", "GERENCIA"));
 });
 
 // ---------- CORS (solo el origen del frontend) ----------

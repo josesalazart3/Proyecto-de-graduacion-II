@@ -23,6 +23,11 @@ public sealed class CredencialRepository : ICredencialRepository
     public Task<CredencialQr?> ObtenerActivaPorPersonaAsync(int personaId, CancellationToken ct = default)
         => _db.CredencialesQr.FirstOrDefaultAsync(c => c.PersonaId == personaId && c.Estado == "activa", ct);
 
+    public Task<CredencialQr?> ObtenerPorTokenAsync(string token, CancellationToken ct = default)
+        => _db.CredencialesQr
+            .Include(c => c.Persona)
+            .FirstOrDefaultAsync(c => c.Token == token, ct);
+
     public async Task<List<CredencialQr>> ListarPorPersonaAsync(int personaId, CancellationToken ct = default)
         => await _db.CredencialesQr.AsNoTracking()
             .Include(c => c.Persona)

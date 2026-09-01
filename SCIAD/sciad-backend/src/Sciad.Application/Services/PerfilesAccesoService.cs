@@ -7,10 +7,11 @@ namespace Sciad.Application.Services;
 
 /// <summary>
 /// Perfiles de acceso (CU-02): asigna zona + vigencia a una persona. Valida que la persona y la
-/// zona existan, que la persona esté activa y que <c>vigencia_fin &gt;= vigencia_inicio</c>.
+/// zona existan, que la persona y la zona estén activas y que <c>vigencia_fin &gt;= vigencia_inicio</c>.
 /// La baja se hace con <c>DELETE</c> físico: <c>perfiles_acceso</c> es una tabla de asignación
 /// (no histórica) sin columna <c>estado</c> — DERCAS §7.4 solo exige soft-delete en
-/// usuarios/personas/credenciales_qr (decisión anotada en bitácora 2B).
+/// usuarios/personas/credenciales_qr (decisión anotada en bitácora 2B). La validación de
+/// "zona activa" se completó en la adenda 2B cuando <c>zonas_acceso.estado</c> entró en vigor.
 /// </summary>
 public sealed class PerfilesAccesoService : IPerfilesAccesoService
 {
@@ -63,6 +64,12 @@ public sealed class PerfilesAccesoService : IPerfilesAccesoService
         if (zona is null)
         {
             return ServicioResultado<PerfilAccesoDto>.Fallo(CodigosError.NoEncontrado, "Zona no encontrada.");
+        }
+
+        if (!string.Equals(zona.Estado, "activo", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServicioResultado<PerfilAccesoDto>.Fallo(
+                CodigosError.Validacion, "La zona debe estar activa para asignarle un perfil de acceso.");
         }
 
         var perfil = new PerfilAcceso

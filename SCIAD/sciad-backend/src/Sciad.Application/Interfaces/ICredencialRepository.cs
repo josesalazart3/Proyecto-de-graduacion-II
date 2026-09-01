@@ -6,6 +6,9 @@ public interface ICredencialRepository
 {
     Task<CredencialQr?> FindByIdAsync(int id, CancellationToken ct = default);
     Task<CredencialQr?> ObtenerActivaPorPersonaAsync(int personaId, CancellationToken ct = default);
+
+    /// <summary>Busca por token QR (64 hex) incluyendo la persona titular. Devuelve la credencial en cualquier estado.</summary>
+    Task<CredencialQr?> ObtenerPorTokenAsync(string token, CancellationToken ct = default);
     Task<List<CredencialQr>> ListarPorPersonaAsync(int personaId, CancellationToken ct = default);
     Task<List<CredencialQr>> ListarAsync(CancellationToken ct = default);
     Task<CredencialQr> AgregarAsync(CredencialQr credencial, CancellationToken ct = default);

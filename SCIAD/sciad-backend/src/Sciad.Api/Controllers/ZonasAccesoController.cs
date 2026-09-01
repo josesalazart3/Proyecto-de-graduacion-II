@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sciad.Api.Common;
+using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.Zonas;
 using Sciad.Application.Interfaces;
 
@@ -46,6 +47,17 @@ public sealed class ZonasAccesoController : ControllerBase
     public async Task<IActionResult> Actualizar(int id, [FromBody] ActualizarZonaRequest request, CancellationToken ct)
     {
         var resultado = await _zonas.ActualizarAsync(id, request, ct);
+        return resultado.Exitoso ? Ok(resultado.Dato) : ApiProblem.FromServicio(resultado);
+    }
+
+    /// <summary>Alta/baja lógica: <c>{"estado":"activo|inactivo"}</c>. Nunca borrado físico.</summary>
+    [HttpPatch("{id:int}/estado")]
+    [ProducesResponseType(typeof(ZonaDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CambiarEstado(int id, [FromBody] CambiarEstadoRequest request, CancellationToken ct)
+    {
+        var resultado = await _zonas.CambiarEstadoAsync(id, request, ct);
         return resultado.Exitoso ? Ok(resultado.Dato) : ApiProblem.FromServicio(resultado);
     }
 }

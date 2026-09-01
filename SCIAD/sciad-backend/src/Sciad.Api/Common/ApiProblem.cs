@@ -27,7 +27,10 @@ public static class ApiProblem
 
     /// <summary>
     /// Mapea un <see cref="ServicioResultado{T}"/> fallido a una respuesta Problem Details:
-    /// el <see cref="CodigosError"/> decide el código HTTP (404/409/400).
+    /// el <see cref="CodigosError"/> decide el código HTTP (404/409/400). En el branch de 400 se
+    /// propaga el <see cref="CodigosError"/> específico (p. ej. <c>TOKEN_INVALIDO</c>) como
+    /// <c>code</c>, no solo el genérico VALIDACIÓN, para que el frontend identifique el motivo
+    /// exacto del rechazo de un escaneo (CU-04).
     /// </summary>
     public static ObjectResult FromServicio<T>(ServicioResultado<T> resultado)
     {
@@ -35,7 +38,7 @@ public static class ApiProblem
         {
             CodigosError.NoEncontrado => NotFound(resultado.Mensaje ?? "Recurso no encontrado."),
             CodigosError.Conflicto => Conflict(resultado.Mensaje ?? "Conflicto con un recurso existente."),
-            _ => BadRequest(resultado.Mensaje ?? "Solicitud inválida.", CodigosError.Validacion),
+            _ => BadRequest(resultado.Mensaje ?? "Solicitud inválida.", resultado.CodigoError ?? CodigosError.Validacion),
         };
     }
 

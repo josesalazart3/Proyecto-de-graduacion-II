@@ -100,12 +100,27 @@ let idP, idP2;
 console.log('\n== CU-03 Zonas ==');
 let idZ;
 {
-  const z = await call('POST', '/api/zonas-acceso', { token: admin.token, body: { nombre: 'Sala de Servidores', nivelSeguridad: 'ALTO' } });
+  const z = await call('POST', '/api/zonas-acceso', { token: admin.token, body: { nombre: 'Sala de Servidores', nivelSeguridad: 'ALTO', nivelRiesgo: 'CRITICO', capacidad: 120 } });
   check('POST zona -> 201', z.status === 201 && z.body?.nivelSeguridad === 'ALTO');
+  check('  nivelRiesgo y capacidad devueltos', z.status === 201 && z.body?.nivelRiesgo === 'CRITICO' && z.body?.capacidad === 120);
+  check('  estado inicial activo', z.status === 201 && z.body?.estado === 'activo');
   idZ = z.body?.id;
   check('GET zonas incluye la nueva', (await call('GET', '/api/zonas-acceso', { token: admin.token })).body?.some(zz => zz.id === idZ) === true);
-  check('POST zona sin nivel -> 400', (await call('POST', '/api/zonas-acceso', { token: admin.token, body: { nombre: 'x' } })).status === 400);
-  check('PUT zona -> 200', (await call('PUT', `/api/zonas-acceso/${idZ}`, { token: admin.token, body: { nombre: 'Sala Servidores Norte', nivelSeguridad: 'ALTO' } })).status === 200);
+  check('POST zona sin nivelRiesgo -> 400', (await call('POST', '/api/zonas-acceso', { token: admin.token, body: { nombre: 'x', nivelSeguridad: 'ALTO' } })).status === 400);
+  check('POST zona sin nivelSeguridad -> 400', (await call('POST', '/api/zonas-acceso', { token: admin.token, body: { nombre: 'x', nivelRiesgo: 'BAJO' } })).status === 400);
+  check('POST capacidad inválida -> 400', (await call('POST', '/api/zonas-acceso', { token: admin.token, body: { nombre: 'x', nivelSeguridad: 'ALTO', nivelRiesgo: 'BAJO', capacidad: -5 } })).status === 400);
+  const up = await call('PUT', `/api/zonas-acceso/${idZ}`, { token: admin.token, body: { nombre: 'Sala Servidores Norte', nivelSeguridad: 'ALTO', nivelRiesgo: 'MEDIO', capacidad: 80 } });
+  check('PUT zona actualiza nivelRiesgo/capacidad -> 200', up.status === 200 && up.body?.nivelRiesgo === 'MEDIO' && up.body?.capacidad === 80 && up.body?.nombre === 'Sala Servidores Norte');
+  check('PUT zona inexistente -> 404', (await call('PUT', '/api/zonas-acceso/999999', { token: admin.token, body: { nombre: 'a', nivelSeguridad: 'ALTO', nivelRiesgo: 'BAJO' } })).status === 404);
+
+  const des = await call('PATCH', `/api/zonas-acceso/${idZ}/estado`, { token: admin.token, body: { estado: 'inactivo' } });
+  check('PATCH zona inactivo -> 200 (baja lógica)', des.status === 200 && des.body?.estado === 'inactivo');
+  check('PATCH zona estado inválido -> 400', (await call('PATCH', `/api/zonas-acceso/${idZ}/estado`, { token: admin.token, body: { estado: 'borrado' } })).status === 400);
+  check('PATCH zona inexistente -> 404', (await call('PATCH', '/api/zonas-acceso/999999/estado', { token: admin.token, body: { estado: 'inactivo' } })).status === 404);
+  check('GET incluye la inactiva (soft-delete)', (await call('GET', '/api/zonas-acceso', { token: admin.token })).body?.some(zz => zz.id === idZ && zz.estado === 'inactivo') === true);
+  // reactivar para el flujo E2E de perfiles (la zona debe estar activa)
+  await call('PATCH', `/api/zonas-acceso/${idZ}/estado`, { token: admin.token, body: { estado: 'activo' } });
+  check('PATCH zona reactivada -> activo', (await call('GET', '/api/zonas-acceso', { token: admin.token })).body?.some(zz => zz.id === idZ && zz.estado === 'activo') === true);
 }
 
 console.log('\n== CU-04 Perfiles de acceso ==');
@@ -120,6 +135,12 @@ let idPF;
   check('POST vigencia fin < inicio -> 400', (await call('POST', '/api/perfiles-acceso', { token: admin.token, body: { personaId: +idP, zonaId: +idZ, vigenciaInicio: '2026-12-31', vigenciaFin: '2026-09-01' } })).status === 400);
   check('POST persona inexistente -> 404', (await call('POST', '/api/perfiles-acceso', { token: admin.token, body: { personaId: 999999, zonaId: +idZ, vigenciaInicio: '2026-09-01', vigenciaFin: '2026-12-31' } })).status === 404);
   check('POST zona inexistente -> 404', (await call('POST', '/api/perfiles-acceso', { token: admin.token, body: { personaId: +idP, zonaId: 999999, vigenciaInicio: '2026-09-01', vigenciaFin: '2026-12-31' } })).status === 404);
+
+  // adenda 2B: una zona inactiva no admite nuevos perfiles (igual que persona inactiva)
+  const zInact = await call('POST', '/api/zonas-acceso', { token: admin.token, body: { nombre: 'Zona Temporal Inactiva', nivelSeguridad: 'ALTO', nivelRiesgo: 'BAJO' } });
+  const idZInact = zInact.body?.id;
+  await call('PATCH', `/api/zonas-acceso/${idZInact}/estado`, { token: admin.token, body: { estado: 'inactivo' } });
+  check('POST perfil zona inactiva -> 400', (await call('POST', '/api/perfiles-acceso', { token: admin.token, body: { personaId: +idP, zonaId: +idZInact, vigenciaInicio: '2026-09-01', vigenciaFin: '2026-12-31' } })).status === 400);
 
   const vis = await call('PATCH', `/api/personas/${idP2}/estado`, { token: admin.token, body: { estado: 'inactivo' } });
   check('(prep) visitante inactivo', vis.status === 200);

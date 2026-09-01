@@ -11,6 +11,24 @@ public static class CodigosError
 
     /// <summary>→ 400 Bad Request (validación de negocio).</summary>
     public const string Validacion = "VALIDACION";
+
+    // --- Códigos específicos del escaneo QR (CU-04). Todos → 400, pero con `code`
+    //     identificable por el frontend (no solo el status HTTP) para el feedback rojo.
+    //     Fase 2C. ---
+    /// <summary>El token no corresponde a ninguna credencial existente → 400.</summary>
+    public const string TokenInvalido = "TOKEN_INVALIDO";
+
+    /// <summary>La credencial está revocada/vencida (intento de reuso → notificación) → 400.</summary>
+    public const string CredencialRevocada = "CREDENCIAL_REVOCADA";
+
+    /// <summary>La persona titular de la credencial está inactiva → 400.</summary>
+    public const string PersonaInactiva = "PERSONA_INACTIVA";
+
+    /// <summary>La zona no existe, está inactiva, o la persona no tiene perfil para ella → 400.</summary>
+    public const string ZonaNoAutorizada = "ZONA_NO_AUTORIZADA";
+
+    /// <summary>La persona tiene perfil para la zona pero su vigencia no cubre la fecha → 400 (dispara notificación fuera_horario).</summary>
+    public const string FueraVigencia = "FUERA_VIGENCIA";
 }
 
 /// <summary>

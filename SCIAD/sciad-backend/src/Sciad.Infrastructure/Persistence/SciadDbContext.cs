@@ -79,6 +79,11 @@ public class SciadDbContext : DbContext
             e.ToTable("zonas_acceso");
             e.Property(z => z.Nombre).HasMaxLength(80).IsRequired();
             e.Property(z => z.NivelSeguridad).HasMaxLength(20).IsRequired();
+            // Adenda 2B: capacidad (aforo), nivel_riesgo y estado (baja lógica, DERCAS no la definía).
+            e.Property(z => z.Capacidad);
+            e.Property(z => z.NivelRiesgo).HasMaxLength(20).IsRequired().HasDefaultValue("MEDIO");
+            e.Property(z => z.Estado).HasMaxLength(20).HasDefaultValue("activo");
+            e.HasIndex(z => z.Estado);
         });
 
         // ---- perfiles_acceso ----

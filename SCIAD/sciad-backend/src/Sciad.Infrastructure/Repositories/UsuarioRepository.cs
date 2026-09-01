@@ -60,6 +60,14 @@ public sealed class UsuarioRepository : IUsuarioRepository
         return _db.Roles.FirstOrDefaultAsync(r => r.Codigo.ToUpper() == normalizado, ct);
     }
 
+    public Task<Usuario?> ObtenerActivoPorRolAsync(string rolCodigo, CancellationToken ct = default)
+    {
+        var normalizado = rolCodigo.Trim().ToUpperInvariant();
+        return _db.Usuarios
+            .Include(u => u.Rol)
+            .FirstOrDefaultAsync(u => u.Estado == "activo" && u.Rol.Codigo == normalizado, ct);
+    }
+
     public async Task<Usuario> AgregarAsync(Usuario usuario, CancellationToken ct = default)
     {
         _db.Usuarios.Add(usuario);

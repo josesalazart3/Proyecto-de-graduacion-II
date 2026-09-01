@@ -25,6 +25,10 @@ public static class DependencyInjection
         services.AddScoped<IZonaRepository, ZonaRepository>();
         services.AddScoped<IPerfilAccesoRepository, PerfilAccesoRepository>();
         services.AddScoped<ICredencialRepository, CredencialRepository>();
+        services.AddScoped<IRegistroAccesoRepository, RegistroAccesoRepository>();
+        services.AddScoped<IAuditoriaRepository, AuditoriaRepository>();
+        services.AddScoped<INotificacionRepository, NotificacionRepository>();
+        services.AddScoped<IReporteRepository, ReporteRepository>();
         services.AddScoped<DbSeeder>();
 
         return services;

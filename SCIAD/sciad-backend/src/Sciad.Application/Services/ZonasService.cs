@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.Zonas;
 using Sciad.Application.Interfaces;
 using Sciad.Domain.Entities;
@@ -6,8 +7,9 @@ using Sciad.Domain.Entities;
 namespace Sciad.Application.Services;
 
 /// <summary>
-/// CRUD de zonas de acceso. Nota: según DERCAS §7.2, <c>zonas_acceso</c> NO tiene columna
-/// <c>estado</c> — las zonas siempre están vigentes (ver bitácora 2B).
+/// CRUD de zonas de acceso. Adenda a la Fase 2B (corrección post-verificación): la zona sí tiene
+/// <c>estado</c> (baja lógica, mismo patrón de usuarios/personas) además de <c>capacidad</c> y
+/// <c>nivel_riesgo</c>. Ver bitácora 2B.
 /// </summary>
 public sealed class ZonasService : IZonasService
 {
@@ -32,6 +34,9 @@ public sealed class ZonasService : IZonasService
         {
             Nombre = req.Nombre.Trim(),
             NivelSeguridad = req.NivelSeguridad.Trim(),
+            Capacidad = req.Capacidad,
+            NivelRiesgo = req.NivelRiesgo.Trim(),
+            Estado = "activo",
         };
 
         var creada = await _zonas.AgregarAsync(zona, ct);
@@ -50,9 +55,33 @@ public sealed class ZonasService : IZonasService
 
         existente.Nombre = req.Nombre.Trim();
         existente.NivelSeguridad = req.NivelSeguridad.Trim();
+        existente.Capacidad = req.Capacidad;
+        existente.NivelRiesgo = req.NivelRiesgo.Trim();
 
         var actualizada = await _zonas.ActualizarAsync(existente, ct);
         _logger.LogInformation("Zona actualizada (id={ZonaId}).", actualizada.Id);
+        return ServicioResultado<ZonaDto>.Ok(ZonaDto.From(actualizada));
+    }
+
+    public async Task<ServicioResultado<ZonaDto>> CambiarEstadoAsync(
+        int id, CambiarEstadoRequest req, CancellationToken ct = default)
+    {
+        var existente = await _zonas.FindByIdAsync(id, ct);
+        if (existente is null)
+        {
+            return ServicioResultado<ZonaDto>.Fallo(CodigosError.NoEncontrado, "Zona no encontrada.");
+        }
+
+        var estado = req.Estado.Trim().ToLowerInvariant();
+        if (estado is not ("activo" or "inactivo"))
+        {
+            return ServicioResultado<ZonaDto>.Fallo(
+                CodigosError.Validacion, "El estado debe ser 'activo' o 'inactivo'.");
+        }
+
+        existente.Estado = estado;
+        var actualizada = await _zonas.ActualizarAsync(existente, ct);
+        _logger.LogInformation("Estado de zona cambiado (id={ZonaId}, estado={Estado}).", id, estado);
         return ServicioResultado<ZonaDto>.Ok(ZonaDto.From(actualizada));
     }
 }

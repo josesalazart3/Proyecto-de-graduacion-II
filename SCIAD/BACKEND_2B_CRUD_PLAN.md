@@ -151,3 +151,28 @@ Ubicados en: `C:\Users\jsalazar\Documents\GitHub\Proyecto de graduacion II\SCIAD
 **Notas de entorno**
 - Sin SDK .NET local: build dentro de `mcr.microsoft.com/dotnet/sdk:8.0`; la máquina no tiene `jq`, así que la verificación se hizo con `node fetch`.
 - Quedan datos de prueba en la BD dev del contenedor (usuario `admin2b@sciad.gt`, 2 personas, 1 zona, perfiles y credenciales) creados por la verificación — inofensivos en el volumen de desarrollo; los credenciales se dejan intencionalmente (históricas, no se borran).
+
+### 2026-08-30 — Adenda a la Fase 2B (corrección post-verificación, NO parte del checklist original)
+
+Entrada nueva que documenta, como corrección posterior a la verificación de 2B, la ampliación del contrato de `zonas_acceso`. La entrada anterior describía `zonas_acceso` sin `estado` y con solo `nombre + nivel_seguridad`; esta adenda la extiende según decisión confirmada del autor, y **no reescribe** el checklist original ni invalida la verificación 62/62: es un cambio de contrato acordado después.
+
+**Decisión del autor:** «Agrega `capacidad` (INTEGER, aforo máximo simultáneo), `nivel_riesgo` (mismo criterio de `nivel_seguridad`, para cruzar con los reportes de auditoría de 2D y sustentar RNF-04) y `estado` (baja lógica, mismo patrón de usuarios/personas). No agregues `vence` (una zona física no vence; la vigencia ya vive en `perfiles_acceso.vigencia_inicio/fin`), ni `emitida_por` (no aplica a una zona; el mock lo copió del contexto de credenciales), ni `descripcion` (solo si aporta valor real a reportes/auditoría).»
+
+**Decisión sobre `descripcion`:** no se agrega. `nombre` + `nivel_riesgo` + `capacidad` cubren la identificación y el aforo que un reporte de auditoría de 2D necesita; no hay un consumidor concreto que exija un texto libre, y no se agrega un campo solo porque estaba en el mock de Fase 1 (mismo criterio que la entrada anterior). Se puede incorporar en Fase 3 si un caso de uso real lo pide.
+
+**Migración nueva `20260830203056_AddZonasAccesoCapacidadRiesgoEstado`** (no se tocó `InitialCreate`):
+- `capacidad` int NULL (aforo máximo simultáneo; opcional).
+- `nivel_riesgo` varchar(20) NOT NULL default `'MEDIO'`.
+- `estado` varchar(20) NOT NULL default `'activo'` + índice `ix_zonas_acceso_estado`.
+
+**Cambios en código**
+- `ZonaAcceso.cs`: propiedades `Capacidad`, `NivelRiesgo="MEDIO"`, `Estado="activo"`.
+- `SciadDbContext.cs`: configuración EF (longitud, defaults, índice de `estado`).
+- DTOs: `ZonaDto` (Id/Nombre/NivelSeguridad/Capacidad/NivelRiesgo/Estado), `CrearZonaRequest` y `ActualizarZonaRequest` con `Capacidad` `[Range(0,1_000_000)]` y `NivelRiesgo` `[Required][StringLength(20)]`.
+- `ZonasService`: mapea los 3 campos en `Crear`/`Actualizar`; nuevo `CambiarEstadoAsync` (baja/alta lógica `activo|inactivo`, 400 si el valor es inválido, 404 si la zona no existe).
+- `ZonasAccesoController`: nuevo `PATCH /api/zonas-acceso/{id}/estado` (mismo patrón que usuarios/personas).
+- `PerfilesAccesoService`: **completada la validación del plan §3.5 "zona activa"** que en 2B quedó reducida a "la zona existe" porque `zonas_acceso` no tenía `estado`. Ahora `POST /api/perfiles-acceso` rechaza (400) asignar una zona inactiva, igual que ya hacía con una persona inactiva.
+
+**Verificación real:** extendido `verify-2b.mjs` con los checks de los campos nuevos (nivelRiesgo/capacidad/estado en POST y PUT, capacidad inválida → 400, PATCH baja/alta, zona inactiva → 400 al crear perfil) y **62/62 verdes** sobre una BD dev recién restablecida (`docker compose down -v` + `up -d --build`, autorizado por el autor) — el script usa emails/DPIs fijos, así que una verificación completa requiere BD limpia; en una BD con datos previos los 409 de duplicidad arruinan la corrida.
+
+**Alcance respetado:** no se tocaron los nombres de ruta (`/usuarios` vs `/users`) ni ningún otro campo de otras entidades — eso sigue siendo trabajo de Fase 3.

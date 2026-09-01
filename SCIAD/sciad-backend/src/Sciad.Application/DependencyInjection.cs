@@ -16,6 +16,10 @@ public static class DependencyInjection
         services.AddScoped<IZonasService, ZonasService>();
         services.AddScoped<IPerfilesAccesoService, PerfilesAccesoService>();
         services.AddScoped<ICredencialesService, CredencialesService>();
+        services.AddScoped<IRegistrosAccesoService, RegistrosAccesoService>();
+        services.AddScoped<INotificacionesService, NotificacionesService>();
+        services.AddScoped<IAuditoriaService, AuditoriaService>();
+        services.AddScoped<IReportesService, ReportesService>();
         return services;
     }
 }

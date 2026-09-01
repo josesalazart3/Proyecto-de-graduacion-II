@@ -23,6 +23,12 @@ public interface IUsuarioRepository
     /// <summary>Busca un rol por su código de máquina (ADMIN/SEGURIDAD/GERENCIA).</summary>
     Task<Rol?> FindRolByCodigoAsync(string codigo, CancellationToken ct = default);
 
+    /// <summary>
+    /// Primer usuario activo con el rol indicado (por código), incluido el rol.
+    /// Usado por el escaneo QR (2C) para dirigir la notificación automática a Gerencia.
+    /// </summary>
+    Task<Usuario?> ObtenerActivoPorRolAsync(string rolCodigo, CancellationToken ct = default);
+
     Task<Usuario> AgregarAsync(Usuario usuario, CancellationToken ct = default);
 
     /// <summary>Persiste los cambios de una entidad ya rastreada por el contexto.</summary>
