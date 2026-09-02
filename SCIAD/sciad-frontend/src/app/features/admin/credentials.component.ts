@@ -1,8 +1,10 @@
+// Credenciales QR (CU-04): Fase 3 las reconcilia al backend — generar por PERSONA registrada
+// (POST /credenciales/{personaId}/generar), revocar con motivo opcional, reemitir, nunca borrado.
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CredentialsService, ProfilesService } from '../../core/services/crud.service';
-import { AuthService } from '../../core/services/auth.service';
-import { Credencial, CredencialEstado } from '../../core/models/credential.model';
+import { CredentialsService, PersonasService } from '../../core/services/crud.service';
+import { Credencial } from '../../core/models/credential.model';
+import { Persona, TIPO_PERSONA_LABELS } from '../../core/models/persona.model';
 import { Button } from '../../shared/ui/button.component';
 import { Icon } from '../../shared/ui/icon.component';
 import { Card } from '../../shared/ui/card.component';
@@ -12,12 +14,9 @@ import { SciInput, SciSelect } from '../../shared/ui/field.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
 
-const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
-  ACTIVA: 'activo',
-  VENCIDA: 'vencido',
-  REVOCADA: 'revocado',
-  PENDIENTE: 'pendiente',
-};
+function badgeFor(estado: string): StatusKey {
+  return estado === 'activa' ? 'activo' : 'revocado';
+}
 
 @Component({
   selector: 'app-admin-credentials',
@@ -63,10 +62,10 @@ const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
                 <tr>
                   <th>Titular</th>
                   <th class="hide-sm">Documento</th>
-                  <th>Perfil / Zona</th>
-                  <th>Código QR</th>
-                  <th class="hide-md">Vence</th>
+                  <th>Token QR</th>
+                  <th class="hide-md">Emitido</th>
                   <th>Estado</th>
+                  <th class="hide-lg">Motivo</th>
                   <th></th>
                 </tr>
               </thead>
@@ -74,23 +73,19 @@ const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
                 @for (c of credenciales(); track c.id) {
                   <tr>
                     <td>
-                      <div class="cell-strong">{{ c.titular }}</div>
-                      <div class="cell-muted">{{ c.emitidaPor }} · {{ date(c.emitidaEn) }}</div>
+                      <div class="cell-strong">{{ c.personaNombre }}</div>
+                      <div class="cell-muted">{{ personaTipo(c.personaId) }}</div>
                     </td>
-                    <td class="cell-muted hide-sm">{{ c.documento }}</td>
-                    <td>
-                      <div class="cell-strong">{{ c.perfilNombre }}</div>
-                    </td>
-                    <td>
-                      <span class="chip mono qr-token">{{ c.codigoQr }}</span>
-                    </td>
-                    <td class="cell-muted hide-md">{{ date(c.venceEn) }}</td>
-                    <td><sci-badge [status]="STATE_BADGE[c.estado]" /></td>
+                    <td class="cell-muted hide-sm">{{ c.dpiCodigo }}</td>
+                    <td><span class="chip mono qr-token">{{ c.token }}</span></td>
+                    <td class="cell-muted hide-md">{{ c.emitido }}</td>
+                    <td><sci-badge [status]="badgeFor(c.estado)" /></td>
+                    <td class="cell-muted hide-lg">{{ c.motivo ?? (c.estado === 'revocada' ? '—' : '') }}</td>
                     <td>
                       <div class="cell-actions">
-                        @if (c.estado === 'ACTIVA') {
+                        @if (c.estado === 'activa') {
                           <button class="sci-btn-ghost" aria-label="Revocar" (click)="openRevoke(c)"><sci-icon name="trash" [size]="17" /></button>
-                        } @else if (c.estado === 'REVOCADA' || c.estado === 'VENCIDA') {
+                        } @else {
                           <button class="sci-btn-ghost" aria-label="Reemitir" (click)="reissue(c)"><sci-icon name="refresh" [size]="17" /></button>
                         }
                         <button class="sci-btn-ghost" aria-label="Ver" (click)="previewToken(c)"><sci-icon name="eye" [size]="17" /></button>
@@ -105,12 +100,11 @@ const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
       </sci-card>
     </div>
 
-    <!-- Generar -->
+    <!-- Generar (por persona registrada) -->
     <sci-modal [open]="createOpen()" title="Generar credencial" (closed)="createOpen.set(false)">
       <form [formGroup]="createForm" (ngSubmit)="generate()" class="modal-form">
-        <sci-input formControlName="titular" label="Nombre del titular" [error]="cf('titular')" />
-        <sci-input formControlName="documento" label="Documento (DPI / Pasaporte)" [error]="cf('documento')" />
-        <sci-select formControlName="zonaIdPerfil" label="Perfil de acceso" [options]="profileOptions()" />
+        <sci-select formControlName="personaId" label="Persona" [options]="personaOptions()" [error]="cf('personaId')" />
+        <p class="modal-note">Se emitirá la primera credencial de la persona seleccionada. Si ya tiene una activa, el backend rechaza y hay que reemitir.</p>
         <div sci-modal-actions>
           <button sci-btn variant="ghost" size="md" (click)="createOpen.set(false)">Cancelar</button>
           <button sci-btn variant="primary" size="md" type="submit" [loading]="saving()">Generar</button>
@@ -121,8 +115,8 @@ const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
     <!-- Revocar -->
     <sci-modal [open]="revokeOpen()" title="Revocar credencial" (closed)="revokeOpen.set(false)">
       <form [formGroup]="revokeForm" (ngSubmit)="revoke()" class="modal-form">
-        <p class="modal-note">Se revocará la credencial de <strong>{{ selected()?.titular }}</strong>. Esta acción no se puede deshacer.</p>
-        <sci-input formControlName="motivo" label="Motivo de revocación" placeholder="Pérdida, extravío, baja…" [error]="rf('motivo')" />
+        <p class="modal-note">Se revocará la credencial de <strong>{{ selected()?.personaNombre }}</strong>. Esta acción no se puede deshacer.</p>
+        <sci-input formControlName="motivo" label="Motivo (opcional)" placeholder="Pérdida, extravío, baja…" [error]="rf('motivo')" />
         <div sci-modal-actions>
           <button sci-btn variant="ghost" size="md" (click)="revokeOpen.set(false)">Cancelar</button>
           <button sci-btn variant="danger" size="md" type="submit" [loading]="saving()">Revocar</button>
@@ -134,18 +128,17 @@ const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
     <sci-modal [open]="viewOpen()" title="Credencial QR" (closed)="viewOpen.set(false)">
       <div class="qr-view">
         <div class="qr-box"><sci-icon name="qr" [size]="120" /></div>
-        <div class="qr-code mono">{{ selected()?.codigoQr }}</div>
-        <div class="qr-titular">{{ selected()?.titular }}</div>
-        <div class="qr-sub">{{ selected()?.perfilNombre }} · {{ stateLabel() }}</div>
+        <div class="qr-code mono">{{ selected()?.token }}</div>
+        <div class="qr-titular">{{ selected()?.personaNombre }}</div>
+        <div class="qr-sub">{{ estatusLabel() }}</div>
       </div>
     </sci-modal>
   `,
   styles: [
     `
-      .wrap { }
-      .qr-token { font-family: var(--font-mono); }
+      .qr-token { font-family: var(--font-mono); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
       .modal-form { display: flex; flex-direction: column; gap: 16px; }
-      .modal-note { font-size: 14px; color: var(--text-muted); }
+      .modal-note { font-size: 13px; color: var(--text-muted); }
       .qr-view {
         display: flex;
         flex-direction: column;
@@ -161,7 +154,7 @@ const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
         background: var(--surface);
         color: var(--text);
       }
-      .qr-code { font-size: 18px; font-weight: 700; color: var(--text); }
+      .qr-code { font-size: 16px; font-weight: 700; color: var(--text); word-break: break-all; }
       .qr-titular { font-weight: 600; font-size: 15px; color: var(--text); }
       .qr-sub { font-size: 13px; color: var(--text-muted); }
     `,
@@ -169,60 +162,72 @@ const STATE_BADGE: Record<CredencialEstado, StatusKey> = {
 })
 export class CredentialsComponent implements OnInit {
   private readonly service = inject(CredentialsService);
-  private readonly profiles = inject(ProfilesService);
-  private readonly auth = inject(AuthService);
+  private readonly personasSvc = inject(PersonasService);
   private readonly fb = inject(FormBuilder);
   private readonly toast = inject(ToastService);
 
-  protected readonly STATE_BADGE = STATE_BADGE;
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
   protected readonly credenciales = signal<Credencial[]>([]);
-  protected readonly profilesList = signal<{ id: string; nombre: string }[]>([]);
+  protected readonly personasList = signal<Persona[]>([]);
   protected readonly createOpen = signal(false);
   protected readonly revokeOpen = signal(false);
   protected readonly viewOpen = signal(false);
   protected readonly selected = signal<Credencial | null>(null);
 
-  protected readonly profileOptions = computed(() =>
-    this.profilesList().map((p) => ({ value: p.id, label: p.nombre })),
+  protected readonly personaOptions = computed(() =>
+    this.personasList()
+      .filter((p) => p.estado === 'activo')
+      .map((p) => ({ value: p.id, label: `${p.nombre} — ${TIPO_PERSONA_LABELS[p.tipo]}` })),
   );
   protected readonly createForm = this.fb.group({
-    titular: ['', Validators.required],
-    documento: ['', Validators.required],
-    zonaIdPerfil: ['', Validators.required],
+    personaId: ['', Validators.required],
   });
   protected readonly revokeForm = this.fb.group({
-    motivo: ['', Validators.required],
+    motivo: ['', Validators.maxLength(200)],
   });
+
+  protected readonly badgeFor = badgeFor;
 
   ngOnInit(): void {
     this.load();
-    this.profiles.list().subscribe((ps) => this.profilesList.set(ps));
+    this.personasSvc.list().subscribe({
+      next: (ps) => this.personasList.set(ps),
+      error: () => this.toast.error('Error', 'No se pudieron cargar las personas.'),
+    });
   }
 
   private load(): void {
     this.loading.set(true);
-    this.service.list().subscribe((list) => {
-      this.credenciales.set(list);
-      this.loading.set(false);
+    this.service.list().subscribe({
+      next: (list) => { this.credenciales.set(list); this.loading.set(false); },
+      error: () => { this.loading.set(false); this.toast.error('Error', 'No se pudieron cargar las credenciales.'); },
     });
+  }
+
+  protected personaTipo(personaId: string): string {
+    const p = this.personasList().find((x) => x.id === personaId);
+    return p ? TIPO_PERSONA_LABELS[p.tipo] : '';
   }
 
   protected cf(name: string): string | null {
     const c = this.createForm.get(name);
-    if (c?.touched && c.errors?.['required']) return 'Campo requerido.';
+    if (c?.touched && c.errors?.['required']) return 'Selecciona una persona.';
     return null;
   }
   protected rf(name: string): string | null {
     const c = this.revokeForm.get(name);
-    if (c?.touched && c.errors?.['required']) return 'Indica un motivo.';
+    if (c?.touched && c.errors?.['maxlength']) return 'El motivo no puede superar 200 caracteres.';
     return null;
   }
 
   protected openCreate(): void {
+    if (this.personaOptions().length === 0) {
+      this.toast.warning('Sin personas', 'Registra una persona primero (Colaboradores/Visitantes).');
+      return;
+    }
     this.createForm.reset();
-    this.createForm.patchValue({ zonaIdPerfil: this.profilesList()[0]?.id ?? '' });
+    this.createForm.patchValue({ personaId: this.personaOptions()[0].value });
     this.createOpen.set(true);
   }
   protected generate(): void {
@@ -230,29 +235,22 @@ export class CredentialsComponent implements OnInit {
       this.createForm.markAllAsTouched();
       return;
     }
-    const v = this.createForm.value;
+    const personaId = this.createForm.value.personaId!;
     this.saving.set(true);
-    this.service
-      .generar({
-        titular: v.titular!,
-        documento: v.documento!,
-        zonaIdPerfil: v.zonaIdPerfil!,
-        emitidaPor: this.auth.currentUserName(),
-      })
-      .subscribe({
-        next: (c) => {
-          this.saving.set(false);
-          this.createOpen.set(false);
-          this.selected.set(c);
-          this.viewOpen.set(true);
-          this.toast.success('Credencial generada', `QR ${c.codigoQr} emitido.`);
-          this.load();
-        },
-        error: () => {
-          this.saving.set(false);
-          this.toast.error('Error', 'No se pudo generar la credencial.');
-        },
-      });
+    this.service.generar(personaId).subscribe({
+      next: (c) => {
+        this.saving.set(false);
+        this.createOpen.set(false);
+        this.selected.set(c);
+        this.viewOpen.set(true);
+        this.toast.success('Credencial generada', `QR ${c.token.slice(0, 8)}… emitido.`);
+        this.load();
+      },
+      error: (e) => {
+        this.saving.set(false);
+        this.toast.error('Error', this.errorMessage(e) ?? 'No se pudo generar la credencial.');
+      },
+    });
   }
 
   protected openRevoke(c: Credencial): void {
@@ -261,31 +259,27 @@ export class CredentialsComponent implements OnInit {
     this.revokeOpen.set(true);
   }
   protected revoke(): void {
-    if (this.revokeForm.invalid) {
-      this.revokeForm.markAllAsTouched();
-      return;
-    }
     const sel = this.selected();
     if (!sel) return;
     this.saving.set(true);
-    this.service.revocar(sel.id, this.revokeForm.value.motivo!).subscribe({
+    this.service.revocar(sel.id, this.revokeForm.value.motivo ?? undefined).subscribe({
       next: () => {
         this.saving.set(false);
         this.revokeOpen.set(false);
-        this.toast.warning('Credencial revocada', sel.titular);
+        this.toast.warning('Credencial revocada', sel.personaNombre);
         this.load();
       },
-      error: () => {
+      error: (e) => {
         this.saving.set(false);
-        this.toast.error('Error', 'No se pudo revocar.');
+        this.toast.error('Error', this.errorMessage(e) ?? 'No se pudo revocar.');
       },
     });
   }
 
   protected reissue(c: Credencial): void {
-    this.service.reemitir(c.id, this.auth.currentUserName()).subscribe({
+    this.service.reemitir(c.id).subscribe({
       next: (updated) => {
-        this.toast.success('Credencial reemitida', `Nuevo QR ${updated.codigoQr}`);
+        this.toast.success('Credencial reemitida', `Nuevo QR ${updated.token.slice(0, 8)}…`);
         this.load();
       },
       error: () => this.toast.error('Error', 'No se pudo reemitir.'),
@@ -297,15 +291,13 @@ export class CredentialsComponent implements OnInit {
     this.viewOpen.set(true);
   }
 
-  protected stateLabel(): string {
+  protected estatusLabel(): string {
     const s = this.selected()?.estado;
-    return s ? STATE_BADGE[s].toUpperCase() : '';
+    return s === 'activa' ? 'Activa' : s === 'revocada' ? 'Revocada' : '';
   }
-  protected date(iso: string): string {
-    return new Date(iso).toLocaleDateString('es-GT', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+
+  private errorMessage(e: unknown): string | null {
+    const detail = (e as { error?: { detail?: string } })?.error?.detail;
+    return detail ? String(detail) : null;
   }
 }

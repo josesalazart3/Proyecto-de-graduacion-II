@@ -1,17 +1,35 @@
+// Notificaciones (CU-09): Fase 3 lo reconcilia al backend real — NotificacionDto {tipo, mensaje,
+// fecha, leida, personaNombre}. El backend no expone severidad: el tipo diferencia el evento y el
+// ícono se deriva de él. "Marcar todas" se implementa en el cliente (un PATCH por no leída).
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { NotificationsService } from '../../core/services/crud.service';
-import { Notificacion, ANOMALIA_LABELS } from '../../core/models/access-log.model';
+import { Notificacion } from '../../core/models/access-log.model';
 import { Card } from '../../shared/ui/card.component';
 import { Button } from '../../shared/ui/button.component';
 import { Icon, IconName } from '../../shared/ui/icon.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
 
-const SEV_ICON: Record<Notificacion['severidad'], IconName> = {
-  INFO: 'info',
-  WARNING: 'alertTriangle',
-  ALERTA: 'alertTriangle',
+const TIPO_LABELS: Record<string, string> = {
+  concentracion: 'Concentración inusual',
+  token_revocado: 'Credencial revocada en uso',
+  fuera_horario: 'Acceso fuera de vigencia',
 };
+const TIPO_ICON: Record<string, IconName> = {
+  concentracion: 'alertTriangle',
+  token_revocado: 'alertTriangle',
+  fuera_horario: 'clock',
+};
+
+function tipoLabel(tipo: string): string {
+  return TIPO_LABELS[tipo] ?? tipo;
+}
+function tipoIcon(tipo: string): IconName {
+  return TIPO_ICON[tipo] ?? 'info';
+}
+function tipoTone(tipo: string): 'danger' | 'warning' | 'info' {
+  return tipo === 'token_revocado' ? 'danger' : tipo === 'fuera_horario' ? 'info' : 'warning';
+}
 
 @Component({
   selector: 'app-notifications',
@@ -22,7 +40,7 @@ const SEV_ICON: Record<Notificacion['severidad'], IconName> = {
       <div class="page-header">
         <div class="page-heading">
           <h1>Notificaciones</h1>
-          <p class="page-sub">Eventos anómalos detectados automáticamente (CU-10).</p>
+          <p class="page-sub">Eventos anómalos detectados automáticamente (CU-09).</p>
         </div>
         <button sci-btn variant="secondary" size="md" iconName="check" [disabled]="unread() === 0" (click)="markAll()">
           Marcar todas leídas
@@ -36,19 +54,21 @@ const SEV_ICON: Record<Notificacion['severidad'], IconName> = {
       } @else {
         <div class="list">
           @for (n of notifs(); track n.id) {
-            <div class="note" [class.unread]="!n.leida" [class]="'sev-' + n.severidad.toLowerCase()">
-              <span class="note-icon"><sci-icon [name]="SEV_ICON[n.severidad]" [size]="20" /></span>
+            <div class="note" [class.unread]="!n.leida">
+              <span class="note-icon" [class]="'ic-' + tipoTone(n.tipo)"><sci-icon [name]="tipoIcon(n.tipo)" [size]="20" /></span>
               <div class="note-main">
                 <div class="note-head">
-                  <span class="note-type">{{ ANOMALIA_LABELS[n.tipo] }}</span>
+                  <span class="note-type">{{ tipoLabel(n.tipo) }}</span>
                   @if (!n.leida) {
                     <span class="unread-dot" aria-label="No leída"></span>
                   }
                 </div>
                 <div class="note-msg">{{ n.mensaje }}</div>
                 <div class="note-meta">
-                  <span class="chip uppercase-label">{{ n.severidad }}</span>
-                  <span class="muted subtle">{{ date(n.timestamp) }}</span>
+                  @if (n.personaNombre) {
+                    <span class="chip">{{ n.personaNombre }}</span>
+                  }
+                  <span class="muted subtle">{{ date(n.fecha) }}</span>
                 </div>
               </div>
               @if (!n.leida) {
@@ -69,18 +89,15 @@ const SEV_ICON: Record<Notificacion['severidad'], IconName> = {
       .note {
         display: flex; align-items: flex-start; gap: 14px;
         background: var(--surface); border: 1px solid var(--border);
-        border-left-width: 3px; border-radius: var(--radius-md);
+        border-left-width: 3px; border-left-color: var(--sciad-warning);
+        border-radius: var(--radius-md);
         box-shadow: var(--shadow-sm); padding: 16px;
         transition: opacity var(--dur);
       }
-      .note.unread { background: color-mix(in srgb, var(--surface) 96%, var(--sciad-warning) 4%); }
-      .sev-alerta { border-left-color: var(--sciad-danger); }
-      .sev-warning { border-left-color: var(--sciad-warning); }
-      .sev-info { border-left-color: var(--sciad-info); }
-      .sev-alerta .note-icon { color: var(--sciad-danger); }
-      .sev-warning .note-icon { color: var(--sciad-warning); }
-      .sev-info .note-icon { color: var(--sciad-info); }
-      .note-icon { margin-top: 2px; }
+      .note.unread { background: color-mix(in srgb, var(--surface) 96%, var(--sciad-warning) 4%); border-left-color: var(--sciad-danger); }
+      .note-icon { margin-top: 2px; color: var(--sciad-warning); }
+      .note-icon.ic-danger { color: var(--sciad-danger); }
+      .note-icon.ic-info { color: var(--sciad-info); }
       .note-main { flex: 1; min-width: 0; }
       .note-head { display: flex; align-items: center; gap: 8px; }
       .note-type { font-weight: 700; font-size: 15px; color: var(--text); }
@@ -94,8 +111,9 @@ export class NotificationsComponent implements OnInit {
   private readonly service = inject(NotificationsService);
   private readonly toast = inject(ToastService);
 
-  protected readonly ANOMALIA_LABELS = ANOMALIA_LABELS;
-  protected readonly SEV_ICON = SEV_ICON;
+  protected readonly tipoLabel = tipoLabel;
+  protected readonly tipoIcon = tipoIcon;
+  protected readonly tipoTone = tipoTone;
   protected readonly loading = signal(true);
   protected readonly notifs = signal<Notificacion[]>([]);
   protected readonly unread = computed(() => this.notifs().filter((n) => !n.leida).length);
@@ -106,23 +124,39 @@ export class NotificationsComponent implements OnInit {
 
   protected load(): void {
     this.loading.set(true);
-    this.service.list().subscribe((list) => {
-      this.notifs.set(list);
-      this.loading.set(false);
+    this.service.list().subscribe({
+      next: (list) => {
+        // Orden: más recientes primero.
+        this.notifs.set(list.sort((a, b) => (a.fecha < b.fecha ? 1 : -1)));
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
     });
   }
 
   protected mark(n: Notificacion): void {
-    this.service.marcarLeida(n.id).subscribe(() => {
-      this.notifs.update((list) => list.map((x) => (x.id === n.id ? { ...x, leida: true } : x)));
+    this.service.setLeida(n.id, true).subscribe({
+      next: () => {
+        this.notifs.update((list) => list.map((x) => (x.id === n.id ? { ...x, leida: true } : x)));
+      },
+      error: () => this.toast.error('Error', 'No se pudo marcar como leída.'),
     });
   }
 
   protected markAll(): void {
-    this.service.marcarTodasLeidas().subscribe(() => {
-      this.notifs.update((list) => list.map((x) => ({ ...x, leida: true })));
-      this.toast.success('Todas leídas', 'Centro de notificaciones al día.');
-    });
+    const pendientes = this.notifs().filter((n) => !n.leida);
+    let done = 0;
+    for (const n of pendientes) {
+      this.service.setLeida(n.id, true).subscribe({
+        next: () => {
+          done++;
+          if (done === pendientes.length) {
+            this.notifs.update((list) => list.map((x) => ({ ...x, leida: true })));
+            this.toast.success('Todas leídas', 'Centro de notificaciones al día.');
+          }
+        },
+      });
+    }
   }
 
   protected date(iso: string): string {

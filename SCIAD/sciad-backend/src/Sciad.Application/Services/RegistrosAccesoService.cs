@@ -208,6 +208,7 @@ public sealed class RegistrosAccesoService : IRegistrosAccesoService
             Tipo = tipo,
             Mensaje = mensaje,
             Leida = false,
+            Fecha = DateTime.UtcNow,
         }, ct);
         _logger.LogInformation("Notificación generada (tipo={Tipo}, persona={PersonaId}).", tipo, persona.Id);
     }

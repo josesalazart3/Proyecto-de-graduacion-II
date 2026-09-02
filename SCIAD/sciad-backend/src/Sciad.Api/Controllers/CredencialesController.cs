@@ -67,4 +67,18 @@ public sealed class CredencialesController : ControllerBase
             ? Created($"/api/credenciales/{resultado.Dato!.Id}", resultado.Dato)
             : ApiProblem.FromServicio(resultado);
     }
+
+    /// <summary>
+    /// Revoca la credencial (<c>estado = revocada</c>) con motivo opcional. Deja de ser válida para
+    /// escaneo; no se borra físicamente (trazabilidad). 400 si ya está revocada.
+    /// </summary>
+    [HttpPost("{id:int}/revocar")]
+    [ProducesResponseType(typeof(CredencialDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Revocar(int id, [FromBody] RevocarCredencialRequest? request, CancellationToken ct)
+    {
+        var resultado = await _credenciales.RevocarAsync(id, request?.Motivo, ct);
+        return resultado.Exitoso ? Ok(resultado.Dato) : ApiProblem.FromServicio(resultado);
+    }
 }

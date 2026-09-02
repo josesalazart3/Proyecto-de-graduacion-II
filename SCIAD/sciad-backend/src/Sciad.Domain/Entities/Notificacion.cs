@@ -19,4 +19,10 @@ public class Notificacion
     public string Mensaje { get; set; } = null!;
 
     public bool Leida { get; set; }
+
+    /// <summary>
+    /// Momento en que se generó la notificación. El DERCAS §7.2 no definía columna de fecha; se agrega en
+    /// Fase 3 (decisión de usuario) porque el frontend la necesita para ordenar y mostrar "hace X".
+    /// </summary>
+    public DateTime Fecha { get; set; }
 }

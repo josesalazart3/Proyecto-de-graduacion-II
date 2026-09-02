@@ -1,17 +1,22 @@
+// Panel de control: Fase 3 lo reconcilia al backend real. Los KPI se componen en el cliente
+// (decisión aprobada en INTEGRACION_FASE3_PLAN.md §5.3): históricos de hoy, personas activas,
+// notificaciones no leídas y credenciales emitidas. No existe endpoint "dashboard" en el backend.
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { DashboardService } from '../../core/services/crud.service';
-import { AccessLogService } from '../../core/services/crud.service';
-import { NotificationsService } from '../../core/services/crud.service';
-import { RegistroAcceso, ResultadoAcceso } from '../../core/models/access-log.model';
+import {
+  AccessLogService,
+  CredentialsService,
+  NotificationsService,
+  PersonasService,
+} from '../../core/services/crud.service';
+import { RegistroHistorial } from '../../core/models/access-log.model';
 import { KpiCard } from '../../shared/ui/kpi-card.component';
 import { Card } from '../../shared/ui/card.component';
-import { Button } from '../../shared/ui/button.component';
 
 @Component({
   selector: 'app-admin-dashboard',
   standalone: true,
-  imports: [KpiCard, Card, Button, RouterLink],
+  imports: [KpiCard, Card, RouterLink],
   template: `
     <div class="page">
       <div class="page-header">
@@ -22,17 +27,17 @@ import { Button } from '../../shared/ui/button.component';
       </div>
 
       <section class="grid grid-cols-4">
-        <sci-kpi-card title="Accesos hoy" [value]="kpi()?.accesosHoy ?? '—'" icon="activity" tone="brand" [loading]="loading()" />
-        <sci-kpi-card title="Personas activas" [value]="kpi()?.personasActivas ?? '—'" icon="users" tone="info" [loading]="loading()" />
-        <sci-kpi-card title="Alertas pendientes" [value]="kpi()?.alertasPendientes ?? '—'" icon="bell" tone="danger" [loading]="loading()" />
-        <sci-kpi-card title="Credenciales emitidas" [value]="kpi()?.credencialesEmitidas ?? '—'" icon="qr" tone="success" [loading]="loading()" />
+        <sci-kpi-card title="Accesos hoy" [value]="accesosHoy()" icon="activity" tone="brand" [loading]="loading()" />
+        <sci-kpi-card title="Personas activas" [value]="personasActivas()" icon="users" tone="info" [loading]="loading()" />
+        <sci-kpi-card title="Alertas pendientes" [value]="alertasPendientes()" icon="bell" tone="danger" [loading]="loading()" />
+        <sci-kpi-card title="Credenciales emitidas" [value]="credencialesEmitidas()" icon="qr" tone="success" [loading]="loading()" />
       </section>
 
       <section class="grid grid-cols-3">
         <sci-card class="col-span-2">
           <div class="section-head">
             <span class="section-title">Actividad reciente</span>
-            <button sci-btn variant="ghost" size="sm" routerLink="/admin/auditoria">Ver auditoría</button>
+            <a routerLink="/traza" class="ghost-link">Ver trazabilidad</a>
           </div>
           <div class="section-body--flush">
             @if (loading()) {
@@ -43,15 +48,15 @@ import { Button } from '../../shared/ui/button.component';
               <div class="event-list">
                 @for (ev of events(); track ev.id) {
                   <div class="event">
-                    <span class="event-dot" [class]="'r-' + ev.resultado.toLowerCase()"></span>
+                    <span class="event-dot" [class]="'t-' + ev.tipo"></span>
                     <div class="event-main">
                       <div class="event-title">
-                        {{ ev.titular }}
-                        <span class="event-result" [class]="'r-' + ev.resultado.toLowerCase()">
-                          {{ RESULT[ev.resultado] }}
+                        {{ ev.personaNombre }}
+                        <span class="event-tag" [class]="'t-' + ev.tipo">
+                          {{ ev.tipo === 'ingreso' ? 'Ingreso' : 'Egreso' }}
                         </span>
                       </div>
-                      <div class="event-sub">{{ ev.zona }} · {{ ev.estacion }} · {{ time(ev.timestamp) }}</div>
+                      <div class="event-sub">{{ ev.zonaNombre }} · {{ ev.hora.slice(0, 5) }}</div>
                     </div>
                   </div>
                 } @empty {
@@ -69,18 +74,17 @@ import { Button } from '../../shared/ui/button.component';
           <div class="section-body">
             @for (n of alerts(); track n.id) {
               <div class="alert">
-                <span class="alert-dot" [class]="'sev-' + n.severidad.toLowerCase()"></span>
+                <span class="alert-dot"></span>
                 <div>
-                  <div class="alert-title">{{ n.titular ?? 'Sistema' }}</div>
+                  <div class="alert-title">{{ n.personaNombre ?? 'Sistema' }}</div>
                   <div class="alert-sub">{{ n.mensaje }}</div>
+                  <div class="alert-when">{{ time(n.fecha) }}</div>
                 </div>
               </div>
             } @empty {
               <p class="muted">No hay alertas pendientes.</p>
             }
-            <button sci-btn variant="ghost" size="sm" class="alert-link" routerLink="/admin/auditoria">
-              Ir a auditoría
-            </button>
+            <a routerLink="/admin/auditoria" class="ghost-link">Ir a auditoría</a>
           </div>
         </sci-card>
       </section>
@@ -99,6 +103,7 @@ import { Button } from '../../shared/ui/button.component';
         border-bottom: 1px solid var(--border);
       }
       .section-title { font-size: 16px; font-weight: 600; }
+      .ghost-link { font-size: 13px; color: var(--sciad-brand); text-decoration: none; font-weight: 600; }
       .section-body--flush { padding: 4px 0; }
       .section-body {
         padding: 16px 20px;
@@ -115,14 +120,11 @@ import { Button } from '../../shared/ui/button.component';
         border-bottom: 1px solid var(--border);
       }
       .event:last-child { border-bottom: none; }
-      .event-dot {
-        width: 9px; height: 9px; border-radius: 50%; flex: none;
-        background: var(--text-subtle);
-      }
-      .r-autorizado { background: var(--sciad-success); }
-      .r-denegado { background: var(--sciad-danger); }
-      .r-pendiente { background: var(--sciad-warning); }
-      .event-result {
+      .event-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--text-subtle); }
+      .t-ingreso { background: var(--sciad-success); }
+      .t-egreso { background: var(--sciad-info); }
+      .event-tag {
+        display: inline-block;
         font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
         margin-left: 8px;
       }
@@ -138,49 +140,74 @@ import { Button } from '../../shared/ui/button.component';
       }
       @keyframes dash-shimmer { to { background-position: -200% 0; } }
       .alert { display: flex; gap: 10px; align-items: flex-start; }
-      .alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; }
-      .sev-alerta { background: var(--sciad-danger); }
-      .sev-warning { background: var(--sciad-warning); }
-      .sev-info { background: var(--sciad-info); }
+      .alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--sciad-danger); }
       .alert-title { font-weight: 600; font-size: 13px; color: var(--text); }
       .alert-sub { font-size: 12px; color: var(--text-muted); }
-      .alert-link { align-self: flex-start; }
+      .alert-when { font-size: 11px; color: var(--text-subtle); margin-top: 2px; }
+      .section-body a.ghost-link { align-self: flex-start; }
     `,
   ],
 })
 export class AdminDashboardComponent implements OnInit {
-  private readonly dash = inject(DashboardService);
   private readonly logs = inject(AccessLogService);
+  private readonly personasSvc = inject(PersonasService);
+  private readonly cred = inject(CredentialsService);
   private readonly notif = inject(NotificationsService);
 
   protected readonly loading = signal(true);
-  protected readonly kpi = signal<any>(null);
-  protected readonly events = signal<RegistroAcceso[]>([]);
-  protected readonly alerts = signal<
-    { id: string; titular?: string; mensaje: string; severidad: string }[]
-  >([]);
-  protected readonly RESULT = { AUTORIZADO: 'Autorizado', DENEGADO: 'Denegado', PENDIENTE: 'Pendiente' };
+  protected readonly accesosHoy = signal('—');
+  protected readonly personasActivas = signal('—');
+  protected readonly alertasPendientes = signal('—');
+  protected readonly credencialesEmitidas = signal('—');
+  protected readonly events = signal<RegistroHistorial[]>([]);
+  protected readonly alerts = signal<{ id: string; personaNombre?: string; mensaje: string; fecha: string }[]>([]);
 
   ngOnInit(): void {
-    this.dash.get().subscribe((d) => {
-      this.kpi.set(d);
-      this.loading.set(false);
+    const hoy = new Date().toISOString().slice(0, 10);
+    const done = () => {
+      if (
+        this.accesosHoy() !== '—' &&
+        this.personasActivas() !== '—' &&
+        this.alertasPendientes() !== '—' &&
+        this.credencialesEmitidas() !== '—'
+      ) {
+        this.loading.set(false);
+      }
+    };
+
+    this.logs.historial({ desde: hoy, hasta: hoy }).subscribe((list) => {
+      const rows = list.sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1));
+      this.accesosHoy.set(String(rows.length));
+      this.events.set(rows.slice(0, 6));
+      done();
     });
-    this.logs.list().subscribe((list) => {
-      const today = new Date().toDateString();
-      this.events.set(
-        list
-          .filter((r) => new Date(r.timestamp).toDateString() === today)
-          .slice(0, 6),
+    this.personasSvc.list().subscribe((ps) => {
+      this.personasActivas.set(String(ps.filter((p) => p.estado === 'activo').length));
+      done();
+    });
+    this.cred.list().subscribe((cs) => {
+      this.credencialesEmitidas.set(String(cs.length));
+      done();
+    });
+    this.notif.list().subscribe((ns) => {
+      const noLeidas = ns.filter((n) => !n.leida);
+      this.alertasPendientes.set(String(noLeidas.length));
+      this.alerts.set(
+        noLeidas.slice(0, 4).map((n) => ({
+          id: n.id,
+          personaNombre: n.personaNombre ?? undefined,
+          mensaje: n.mensaje,
+          fecha: n.fecha,
+        })),
       );
+      done();
     });
-    this.notif.list().subscribe((ns) =>
-      this.alerts.set(ns.filter((n) => !n.leida).slice(0, 4)),
-    );
   }
 
   protected time(iso: string): string {
-    return new Date(iso).toLocaleTimeString('es-GT', {
+    return new Date(iso).toLocaleString('es-GT', {
+      day: '2-digit',
+      month: 'short',
       hour: '2-digit',
       minute: '2-digit',
     });

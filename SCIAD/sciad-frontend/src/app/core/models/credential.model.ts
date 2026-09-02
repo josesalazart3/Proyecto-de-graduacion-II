@@ -1,18 +1,22 @@
-// Credenciales QR cifradas (CU-04: gestionar credenciales).
+// Credenciales QR. Reconciliado al contrato real del backend (Fase 3).
+// CredencialDto: { id, personaId, personaNombre, dpiCodigo, token, estado, emitido, motivo, reemitidoDe }
+// estado: 'activa' | 'revocada' (nunca borrado físico). token = 64 caracteres hex (RNF-01).
 
-export type CredencialEstado = 'ACTIVA' | 'VENCIDA' | 'REVOCADA' | 'PENDIENTE';
+export type CredencialEstado = 'activa' | 'revocada';
+
+export const CREDENCIAL_ESTADO_LABELS: Record<string, string> = {
+  activa: 'Activa',
+  revocada: 'Revocada',
+};
 
 export interface Credencial {
   id: string;
-  titularId: string; // persona (colaborador/visitante) — no usuario
-  titular: string;
-  documento: string; // DPI/Pasaporte (contexto Guatemala)
-  zonaIdPerfil: string; // perfil de acceso asociado
-  perfilNombre: string;
-  codigoQr: string; // token/valor del QR cifrado (para escaneo simulado)
+  personaId: string;
+  personaNombre: string;
+  dpiCodigo: string;
+  token: string;
   estado: CredencialEstado;
-  emitidaEn: string; // ISO
-  venceEn: string; // ISO
-  emitidaPor: string; // nombre del admin que emitió
-  motivo?: string; // motivo de revocación, si aplica
+  emitido: string; // ISO (yyyy-mm-dd)
+  motivo?: string | null; // motivo de revocación, si aplica
+  reemitidoDe?: number | null; // id de la credencial anterior (trazabilidad)
 }

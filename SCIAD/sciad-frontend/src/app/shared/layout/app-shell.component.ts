@@ -14,6 +14,8 @@ interface NavItem {
 const NAV: NavItem[] = [
   { label: 'Dashboard', path: '/admin/dashboard', icon: 'dashboard', roles: ['ADMIN'] },
   { label: 'Usuarios', path: '/admin/usuarios', icon: 'users', roles: ['ADMIN'] },
+  { label: 'Personas', path: '/admin/personas', icon: 'users', roles: ['ADMIN'] },
+  { label: 'Zonas de acceso', path: '/admin/zonas', icon: 'building2', roles: ['ADMIN'] },
   { label: 'Perfiles de acceso', path: '/admin/perfiles', icon: 'id-card', roles: ['ADMIN'] },
   { label: 'Credenciales QR', path: '/admin/credenciales', icon: 'qr', roles: ['ADMIN'] },
   { label: 'Auditoría', path: '/admin/auditoria', icon: 'activity', roles: ['ADMIN'] },

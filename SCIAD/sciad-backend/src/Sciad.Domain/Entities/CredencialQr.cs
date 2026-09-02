@@ -21,4 +21,7 @@ public class CredencialQr
     /// <summary>FK a la credencial anterior en caso de reemisión (nullable).</summary>
     public int? ReemitidoDe { get; set; }
     public CredencialQr? ReemitidaDeCredencial { get; set; }
+
+    /// <summary>Motivo de revocación (si aplica). Agregado en Fase 3 para dar trazabilidad al revocar.</summary>
+    public string? Motivo { get; set; }
 }

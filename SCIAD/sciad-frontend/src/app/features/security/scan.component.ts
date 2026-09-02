@@ -1,32 +1,24 @@
-import { Component, inject, signal } from '@angular/core';
+// Escaneo QR (CU-04): Fase 3 lo reconcilia al backend real — payload {token, zonaId},
+// el tipo (ingreso/egreso) se infiere en el servidor. Los rechazos llegan como error 4xx
+// con `detail` (TOKEN_INVALIDO, CREDENCIAL_REVOCADA, PERSONA_INACTIVA, ZONA_NO_AUTORIZADA,
+// FUERA_VIGENCIA, CONFLICTO). Ya no hay "tomadores" de demo: el token es el hex de 64 chars.
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { AccessLogService } from '../../core/services/crud.service';
-import { AuthService } from '../../core/services/auth.service';
+import { AccessLogService, ZonasService } from '../../core/services/crud.service';
+import { RegistroAccesoResultado } from '../../core/models/access-log.model';
+import { Zona } from '../../core/models/access.model';
 import { Button } from '../../shared/ui/button.component';
 import { Icon } from '../../shared/ui/icon.component';
 import { Card } from '../../shared/ui/card.component';
-import { ToastService } from '../../shared/ui/toast.service';
 
-const RESULT_META = {
-  AUTORIZADO: {
-    label: 'Acceso autorizado',
-    sub: 'Ingreso permitido',
-    tone: 'ok',
-    icon: 'checkCircle',
-  },
-  DENEGADO: {
-    label: 'Acceso denegado',
-    sub: 'Ingreso rechazado',
-    tone: 'bad',
-    icon: 'alertTriangle',
-  },
-  PENDIENTE: {
-    label: 'Pendiente de revisión',
-    sub: 'Se requiere revisión',
-    tone: 'warn',
-    icon: 'clock',
-  },
-} as const;
+interface EscanerResultado {
+  ok: boolean;
+  persona?: string;
+  zona?: string;
+  tipo?: string;
+  hora?: string;
+  motivo?: string;
+}
 
 @Component({
   selector: 'app-scan',
@@ -42,37 +34,60 @@ const RESULT_META = {
             <div class="frame-caption">Escaneando…</div>
           }
         </div>
-        <p class="scan-hint">Apunta la cámara al código QR del visitante</p>
+        <p class="scan-hint">Apunta la cámara al código QR de la credencial</p>
       </div>
 
       @if (result(); as r) {
-        <div class="result" [class]="'r-' + r.resultado.toLowerCase()" role="status">
-          <sci-icon [name]="meta(r.resultado).icon" [size]="30" />
-          <div>
-            <div class="result-title">{{ meta(r.resultado).label }}</div>
-            <div class="result-sub">{{ r.titular }}</div>
-            @if (r.motivo) {
-              <div class="result-motivo">{{ r.motivo }}</div>
-            }
-            <div class="result-when">{{ r.zona }} · {{ time(r.timestamp) }}</div>
+        @if (r.ok) {
+          <div class="result r-ok" role="status">
+            <sci-icon name="checkCircle" [size]="30" />
+            <div>
+              <div class="result-title">Acceso autorizado</div>
+              <div class="result-sub">{{ r.persona }}</div>
+              <div class="result-motivo">{{ r.tipo === 'ingreso' ? 'Ingreso' : 'Egreso' }} · {{ r.zona }}</div>
+              <div class="result-when">{{ r.hora }}</div>
+            </div>
           </div>
-        </div>
+        } @else {
+          <div class="result r-den" role="alert">
+            <sci-icon name="alertTriangle" [size]="30" />
+            <div>
+              <div class="result-title">Acceso denegado</div>
+              <div class="result-sub">{{ r.persona ?? 'Token no reconocido' }}</div>
+              @if (r.motivo) {
+                <div class="result-motivo">{{ r.motivo }}</div>
+              }
+            </div>
+          </div>
+        }
       }
 
       <sci-card class="manual">
-        <div class="manual-label uppercase-label">Ingreso manual del token</div>
+        <div class="manual-label uppercase-label">Registro manual del acceso</div>
         <form [formGroup]="form" (ngSubmit)="submit()" class="manual-form">
+          <select
+            formControlName="zonaId"
+            class="token-input"
+            [class.invalid]="form.controls.zonaId.touched && form.controls.zonaId.invalid"
+          >
+            <option value="" disabled>Zona de acceso…</option>
+            @for (z of zonaOptions(); track z.id) {
+              <option [value]="z.id">{{ z.nombre }}</option>
+            }
+          </select>
           <input
             formControlName="token"
-            placeholder="Ej. SC1AD-0101"
+            placeholder="Token QR de 64 caracteres"
             class="token-input mono"
-            (input)="form.get('token')?.setValue($any($event.target).value.toUpperCase())"
+            (input)="form.get('token')?.setValue($any($event.target).value.trim())"
           />
-          <button sci-btn variant="primary" size="md" [loading]="loading()">
+          <button sci-btn variant="primary" size="md" [loading]="loading()" [disabled]="zonaOptions().length === 0">
             Registrar acceso
           </button>
         </form>
-        <p class="manual-hint">Usa el código de ejemplo <button type="button" class="hint-btn mono" (click)="fillDemo()">SC1AD-0101</button> (autorizado) o <button type="button" class="hint-btn mono" (click)="fillDemoRevoked()">SC1AD-0109</button> (revocado).</p>
+        @if (zonaOptions().length === 0) {
+          <p class="manual-hint">No hay zonas activas. Regístralas primero desde administración.</p>
+        }
       </sci-card>
     </div>
   `,
@@ -131,9 +146,8 @@ const RESULT_META = {
         animation: pop 0.25s var(--ease-out);
       }
       @keyframes pop { from { transform: scale(0.98); opacity: 0; } }
-      .r-autorizado { background: var(--sciad-success-soft); color: var(--sciad-success); }
-      .r-denegado { background: var(--sciad-danger-soft); color: var(--sciad-danger); }
-      .r-pendiente { background: var(--sciad-warning-soft); color: var(--sciad-warning); }
+      .r-ok { background: var(--sciad-success-soft); color: var(--sciad-success); }
+      .r-den { background: var(--sciad-danger-soft); color: var(--sciad-danger); }
       .result-title { font-weight: 800; font-size: 18px; line-height: 1.2; }
       .result-sub { font-weight: 600; font-size: 15px; margin-top: 2px; }
       .result-motivo { font-size: 13px; margin-top: 2px; }
@@ -150,76 +164,63 @@ const RESULT_META = {
         border: 1px solid var(--border-strong);
         background: var(--surface);
         color: var(--text);
-        font-size: 16px;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
+        font-size: 15px;
       }
+      .token-input.invalid { border-color: var(--sciad-danger); }
       .token-input:focus { outline: none; border-color: var(--sciad-brand); box-shadow: 0 0 0 3px var(--sciad-brand-soft); }
       .manual-hint { font-size: 12px; color: var(--text-subtle); margin-top: 10px; }
-      .hint-btn {
-        border: none; background: transparent; padding: 0;
-        color: var(--sciad-brand); font-weight: 600; cursor: pointer; text-decoration: underline;
-      }
     `,
   ],
 })
-export class ScanComponent {
+export class ScanComponent implements OnInit {
   private readonly service = inject(AccessLogService);
-  private readonly auth = inject(AuthService);
+  private readonly zonasSvc = inject(ZonasService);
   private readonly fb = inject(FormBuilder);
-  private readonly toast = inject(ToastService);
 
   protected readonly scanning = signal(true);
   protected readonly loading = signal(false);
-  protected readonly result = signal<any>(null);
+  protected readonly zonas = signal<Zona[]>([]);
+  protected readonly result = signal<EscanerResultado | null>(null);
 
+  protected readonly zonaOptions = computed(() =>
+    this.zonas().filter((z) => z.estado === 'activo'),
+  );
   protected readonly form = this.fb.group({
+    zonaId: ['', Validators.required],
     token: ['', [Validators.required, Validators.minLength(6)]],
   });
 
-  protected meta(result: string) {
-    return RESULT_META[result as keyof typeof RESULT_META] ?? RESULT_META.PENDIENTE;
-  }
-
-  fillDemo(): void {
-    this.form.setValue({ token: 'SC1AD-0101' });
-  }
-  fillDemoRevoked(): void {
-    this.form.setValue({ token: 'SC1AD-0109' });
+  ngOnInit(): void {
+    this.zonasSvc.list().subscribe((zs) => {
+      this.zonas.set(zs);
+      const first = zs.find((z) => z.estado === 'activo');
+      if (first) this.form.patchValue({ zonaId: String(first.id) });
+    });
   }
 
   submit(): void {
     if (this.form.invalid || this.loading()) return;
-    const token = this.form.value.token!;
+    const v = this.form.value;
     this.loading.set(true);
-    this.service
-      .escanear({
-        codigoQr: token,
-        operador: this.auth.currentUserName(),
-        estacion: 'Acceso Principal',
-      })
-      .subscribe({
-        next: (res) => {
-          this.loading.set(false);
-          this.result.set(res);
-          this.form.reset();
-          if (res.resultado === 'AUTORIZADO') {
-            this.toast.success('Acceso autorizado', res.titular);
-          } else {
-            this.toast.warning('Acceso denegado', res.motivo);
-          }
-        },
-        error: () => {
-          this.loading.set(false);
-          this.toast.error('Error', 'No se pudo procesar el escaneo.');
-        },
-      });
-  }
-
-  protected time(iso: string): string {
-    return new Date(iso).toLocaleTimeString('es-GT', {
-      hour: '2-digit',
-      minute: '2-digit',
+    this.service.escanear({ token: v.token!, zonaId: +v.zonaId! }).subscribe({
+      next: (res: RegistroAccesoResultado) => {
+        this.loading.set(false);
+        this.result.set({
+          ok: true,
+          persona: res.personaNombre,
+          zona: res.zonaNombre,
+          tipo: res.tipo,
+          hora: res.hora.slice(0, 5),
+        });
+        this.form.controls.token.reset();
+        this.scanning.set(false);
+      },
+      error: (e) => {
+        this.loading.set(false);
+        const detail = (e as { error?: { detail?: string } })?.error?.detail;
+        this.result.set({ ok: false, motivo: detail ?? 'El acceso fue rechazado.' });
+        this.scanning.set(false);
+      },
     });
   }
 }

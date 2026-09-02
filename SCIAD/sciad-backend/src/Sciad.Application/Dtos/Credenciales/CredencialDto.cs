@@ -10,6 +10,7 @@ public sealed record CredencialDto(
     string Token,
     string Estado,
     DateOnly Emitido,
+    string? Motivo,
     int? ReemitidoDe)
 {
     public static CredencialDto From(CredencialQr c) => new(
@@ -20,5 +21,6 @@ public sealed record CredencialDto(
         c.Token,
         c.Estado,
         c.Emitido,
+        c.Motivo,
         c.ReemitidoDe);
 }

@@ -109,6 +109,7 @@ public class SciadDbContext : DbContext
             e.ToTable("credenciales_qr");
             e.Property(c => c.Token).HasColumnType("char(64)").IsRequired();
             e.Property(c => c.Estado).HasMaxLength(20).HasDefaultValue("activa");
+            e.Property(c => c.Motivo).HasMaxLength(200);
 
             e.HasIndex(c => c.Token).IsUnique();
             e.HasIndex(c => new { c.PersonaId, c.Estado });
@@ -191,6 +192,7 @@ public class SciadDbContext : DbContext
             e.Property(n => n.Tipo).HasMaxLength(30).IsRequired();
             e.Property(n => n.Mensaje).HasColumnType("text").IsRequired();
             e.Property(n => n.Leida).HasDefaultValue(false);
+            e.Property(n => n.Fecha).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             e.HasOne(n => n.Usuario)
                 .WithMany(u => u.Notificaciones)
@@ -202,6 +204,7 @@ public class SciadDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             e.HasIndex(n => new { n.UsuarioId, n.Leida });
+            e.HasIndex(n => n.Fecha);
         });
     }
 }

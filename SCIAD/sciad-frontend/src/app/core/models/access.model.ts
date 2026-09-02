@@ -1,31 +1,24 @@
-// Zonas y perfiles de acceso (CU-03: gestionar perfiles de acceso por zona).
+// Zonas de acceso y perfiles de acceso (asignación persona+zona+vigencia).
+// Reconciliado al contrato real del backend (Fase 3):
+//  - ZonaDto: { id, nombre, nivelSeguridad, capacidad, nivelRiesgo, estado }
+//  - PerfilAccesoDto: { id, personaId, personaNombre, zonaId, zonaNombre, vigenciaInicio, vigenciaFin }
 
 export interface Zona {
   id: string;
   nombre: string;
-  descripcion: string;
-  nivelRiesgo: 'BAJO' | 'MEDIO' | 'ALTO' | 'CRITICO';
-  capacidad: number; // personas simultáneas estimadas
-  activa: boolean;
+  nivelSeguridad: string; // ALTO / MEDIO / BAJO
+  capacidad: number | null; // aforo máximo simultáneo (nullable)
+  nivelRiesgo: string; // CRITICO / ALTO / MEDIO / BAJO
+  estado: string; // 'activo' | 'inactivo'
 }
 
-export type DiaSemana = 'LUN' | 'MAR' | 'MIE' | 'JUE' | 'VIE' | 'SAB' | 'DOM';
-
-export interface HorarioAcceso {
-  id: string;
-  dia: DiaSemana;
-  inicio: string; // HH:mm
-  fin: string; // HH:mm
-}
-
+/** Perfil de acceso = asignación de una persona a una zona con vigencia (CU-03). */
 export interface PerfilAcceso {
   id: string;
-  nombre: string;
+  personaId: string;
+  personaNombre: string;
   zonaId: string;
-  descripcion: string;
-  horarios: HorarioAcceso[];
-  requiereAprobacion: boolean;
-  activo: boolean;
-  // Agregación de solo lectura / UI:
-  asignaciones?: number;
+  zonaNombre: string;
+  vigenciaInicio: string; // ISO (yyyy-mm-dd)
+  vigenciaFin: string; // ISO (yyyy-mm-dd)
 }

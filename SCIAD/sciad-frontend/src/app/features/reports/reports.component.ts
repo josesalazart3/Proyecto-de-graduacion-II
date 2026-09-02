@@ -1,72 +1,46 @@
+// Reportes (CU-07): Fase 3 lo reconcilia al backend real — GET /reportes (metadatos paginados) y
+// POST /reportes/generar (CSV en memoria con encabezados Fecha,Hora,Persona,Zona,Tipo,RegistradoPor).
+// El backend NO guarda el archivo: solo el periodo, total y quién. La lista mostrada es esa metadata.
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
-import { AccessLogService, AuditService } from '../../core/services/crud.service';
-import { RegistroAcceso } from '../../core/models/access-log.model';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ReportsService, PersonasService, ZonasService } from '../../core/services/crud.service';
+import { Reporte } from '../../core/models/reporte.model';
+import { Persona } from '../../core/models/persona.model';
+import { Zona } from '../../core/models/access.model';
 import { KpiCard } from '../../shared/ui/kpi-card.component';
 import { Card } from '../../shared/ui/card.component';
 import { Button } from '../../shared/ui/button.component';
-import { Badge, StatusKey } from '../../shared/ui/badge.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
+import { Modal } from '../../shared/ui/modal.component';
+import { SciInput, SciSelect } from '../../shared/ui/field.component';
 import { ToastService } from '../../shared/ui/toast.service';
-import { AuthService } from '../../core/services/auth.service';
-
-const RES_BADGE: Record<RegistroAcceso['resultado'], StatusKey> = {
-  AUTORIZADO: 'autorizado',
-  DENEGADO: 'denegado',
-  PENDIENTE: 'pendiente',
-};
 
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [KpiCard, Card, Button, Badge, EmptyState],
+  imports: [KpiCard, Card, Button, EmptyState, Modal, SciInput, SciSelect, ReactiveFormsModule],
   template: `
     <div class="page">
       <div class="page-header">
         <div class="page-heading">
           <h1>Reportes</h1>
-          <p class="page-sub">Reporte consolidado de accesos y auditoría.</p>
+          <p class="page-sub">Generación y consulta del reporte consolidado de accesos (CU-07).</p>
         </div>
         <div class="page-actions">
-          <button sci-btn variant="secondary" size="md" iconName="refresh" (click)="load()">Refrescar</button>
-          <button sci-btn variant="primary" size="md" iconName="download" [disabled]="loading()" (click)="exportCsv()">Exportar CSV</button>
+          <button sci-btn variant="ghost" size="md" iconName="refresh" (click)="load()">Refrescar</button>
+          <button sci-btn variant="primary" size="md" iconName="download" [disabled]="generating()" (click)="open()">Generar reporte</button>
         </div>
       </div>
 
-      <section class="grid grid-cols-4">
-        <sci-kpi-card title="Registros totales" [value]="stats().total" icon="activity" tone="brand" [loading]="loading()" />
-        <sci-kpi-card title="Autorizados" [value]="stats().autorizados" icon="checkCircle" tone="success" [loading]="loading()" />
-        <sci-kpi-card title="Denegados" [value]="stats().denegados" icon="circle-x" tone="danger" [loading]="loading()" />
-        <sci-kpi-card title="Inconsistencias" [value]="auditCount()" icon="alertTriangle" tone="warning" [loading]="loading()" />
+      <section class="grid grid-cols-3">
+        <sci-kpi-card title="Reportes generados" [value]="stats().totalReportes" icon="file" tone="brand" [loading]="loading()" />
+        <sci-kpi-card title="Registros incluidos" [value]="stats().totalRegistros" icon="activity" tone="info" [loading]="loading()" />
+        <sci-kpi-card title="Último periodo" [value]="stats().ultimoPeriodo" icon="calendar" tone="success" [loading]="loading()" />
       </section>
 
       <sci-card>
         <div class="section-head">
-          <span class="section-title">Accesos por zona</span>
-        </div>
-        <div class="body">
-          @if (loading()) {
-            <div style="height:120px"></div>
-          } @else {
-            <div class="zone-grid">
-              @for (z of byZone(); track z.zona) {
-                <div class="zone-card">
-                  <div class="zone-name">{{ z.zona }}</div>
-                  <div class="zone-counts">
-                    <span class="zc ok">{{ z.aut }}</span>
-                    <span class="zc bad">{{ z.den }}</span>
-                  </div>
-                </div>
-              } @empty {
-                <p class="muted">Sin datos.</p>
-              }
-            </div>
-          }
-        </div>
-      </sci-card>
-
-      <sci-card>
-        <div class="section-head">
-          <span class="section-title">Detalle de accesos</span>
+          <span class="section-title">Reportes generados</span>
         </div>
         <div class="flush">
           @if (loading()) {
@@ -75,19 +49,20 @@ const RES_BADGE: Record<RegistroAcceso['resultado'], StatusKey> = {
                 <tr class="sci-skel-row">@for (c of [1,2,3,4]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table>
-          } @else if (rows().length === 0) {
-            <sci-empty-state icon="file" title="Sin registros" message="No hay accesos registrados." />
+          } @else if (reportes().length === 0) {
+            <sci-empty-state icon="file" title="Sin reportes" message="Aún no se ha generado ningún reporte.">
+              <button sci-btn variant="primary" size="sm" iconName="download" (click)="open()">Generar el primero</button>
+            </sci-empty-state>
           } @else {
             <table class="sci-table">
-              <thead><tr><th>Fecha</th><th>Titular</th><th>Zona</th><th>Estación</th><th>Resultado</th></tr></thead>
+              <thead><tr><th>Periodo</th><th>Registros</th><th class="hide-sm">Generado</th><th class="hide-md">Generado por</th></tr></thead>
               <tbody>
-                @for (r of rows(); track r.id) {
+                @for (r of reportes(); track r.id) {
                   <tr>
-                    <td class="cell-muted">{{ date(r.timestamp) }}</td>
-                    <td class="cell-strong">{{ r.titular }}</td>
-                    <td>{{ r.zona }}</td>
-                    <td class="cell-muted">{{ r.estacion }}</td>
-                    <td><sci-badge [status]="RES_BADGE[r.resultado]" /></td>
+                    <td class="cell-strong">{{ r.periodo }}</td>
+                    <td class="cell-mono">{{ r.totalRegistros }}</td>
+                    <td class="cell-muted hide-sm">{{ r.generado }}</td>
+                    <td class="cell-muted hide-md">{{ r.generadoPor }}</td>
                   </tr>
                 }
               </tbody>
@@ -96,114 +71,153 @@ const RES_BADGE: Record<RegistroAcceso['resultado'], StatusKey> = {
         </div>
       </sci-card>
     </div>
+
+    <sci-modal [open]="modalOpen()" title="Generar reporte CSV" (closed)="modalOpen.set(false)">
+      <form [formGroup]="form" (ngSubmit)="generate()" class="modal-form">
+        <div class="row2">
+          <sci-input formControlName="desde" label="Desde" type="date" [error]="f('desde')" />
+          <sci-input formControlName="hasta" label="Hasta" type="date" [error]="f('hasta')" />
+        </div>
+        <sci-select formControlName="personaId" label="Persona (opcional)" [options]="personaOptions()" />
+        <sci-select formControlName="zonaId" label="Zona (opcional)" [options]="zonaOptions()" />
+        <sci-select formControlName="tipoEvento" label="Tipo de evento (opcional)" [options]="tipoOptions" />
+        @if (generating()) {
+          <p class="modal-note">Generando CSV…</p>
+        }
+        <div sci-modal-actions>
+          <button sci-btn variant="ghost" size="md" (click)="modalOpen.set(false)">Cancelar</button>
+          <button sci-btn variant="primary" size="md" type="submit" [loading]="generating()">Generar y descargar</button>
+        </div>
+      </form>
+    </sci-modal>
   `,
   styles: [
     `
       .section-head { padding: 16px 20px; border-bottom: 1px solid var(--border); }
       .section-title { font-size: 16px; font-weight: 600; }
-      .body { padding: 20px; }
       .flush { }
-      .zone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-      .zone-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
-      .zone-name { font-weight: 600; font-size: 13px; color: var(--text); }
-      .zone-counts { display: flex; gap: 8px; }
-      .zc { font-family: var(--font-mono); font-weight: 700; font-size: 14px; }
-      .zc.ok { color: var(--sciad-success); }
-      .zc.bad { color: var(--sciad-danger); }
+      .modal-form { display: flex; flex-direction: column; gap: 16px; }
+      .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .modal-note { font-size: 13px; color: var(--text-muted); }
     `,
   ],
 })
 export class ReportsComponent implements OnInit {
-  private readonly logs = inject(AccessLogService);
-  private readonly audit = inject(AuditService);
-  private readonly auth = inject(AuthService);
+  private readonly service = inject(ReportsService);
+  private readonly personasSvc = inject(PersonasService);
+  private readonly zonasSvc = inject(ZonasService);
+  private readonly fb = inject(FormBuilder);
   private readonly toast = inject(ToastService);
 
-  protected readonly RES_BADGE = RES_BADGE;
+  protected readonly tipoOptions = [
+    { value: '', label: 'Ingreso y egreso' },
+    { value: 'ingreso', label: 'Solo ingresos' },
+    { value: 'egreso', label: 'Solo egresos' },
+  ];
   protected readonly loading = signal(true);
-  protected readonly records = signal<RegistroAcceso[]>([]);
-  protected readonly auditCount = signal(0);
+  protected readonly generating = signal(false);
+  protected readonly modalOpen = signal(false);
+  protected readonly reportes = signal<Reporte[]>([]);
+  protected readonly personas = signal<Persona[]>([]);
+  protected readonly zonas = signal<Zona[]>([]);
+
+  protected readonly personaOptions = computed(() =>
+    this.personas().map((p) => ({ value: String(p.id), label: p.nombre })),
+  );
+  protected readonly zonaOptions = computed(() =>
+    this.zonas().map((z) => ({ value: String(z.id), label: z.nombre })),
+  );
+
+  protected readonly form = this.fb.group({
+    id: [''],
+    desde: ['', Validators.required],
+    hasta: ['', Validators.required],
+    personaId: [''],
+    zonaId: [''],
+    tipoEvento: [''],
+  });
 
   protected readonly stats = computed(() => {
-    const rows = this.records();
+    const rs = this.reportes();
     return {
-      total: rows.length,
-      autorizados: rows.filter((r) => r.resultado === 'AUTORIZADO').length,
-      denegados: rows.filter((r) => r.resultado === 'DENEGADO').length,
+      totalReportes: rs.length,
+      totalRegistros: rs.reduce((acc, r) => acc + r.totalRegistros, 0),
+      ultimoPeriodo: rs[0]?.periodo ?? '—',
     };
-  });
-  protected readonly byZone = computed(() => {
-    const map = new Map<string, { aut: number; den: number }>();
-    for (const r of this.records()) {
-      const e = map.get(r.zona) ?? { aut: 0, den: 0 };
-      if (r.resultado === 'AUTORIZADO') e.aut++;
-      else if (r.resultado === 'DENEGADO') e.den++;
-      map.set(r.zona, e);
-    }
-    return [...map.entries()].map(([zona, c]) => ({ zona, ...c }));
-  });
-  protected readonly rows = computed(() => {
-    const rows = [...this.records()].sort((a, b) =>
-      a.timestamp < b.timestamp ? 1 : -1,
-    );
-    return this.isManagement() && !this.isAdmin() ? rows.slice(0, 200) : rows;
   });
 
   ngOnInit(): void {
     this.load();
+    this.personasSvc.list().subscribe((ps) => this.personas.set(ps));
+    this.zonasSvc.list().subscribe((zs) => this.zonas.set(zs));
   }
 
-  protected isAdmin(): boolean {
-    return this.auth.role() === 'ADMIN';
+  protected f(name: string): string | null {
+    const c = this.form.get(name);
+    if (c?.touched && c.errors?.['required']) return 'Campo requerido.';
+    return null;
   }
-  protected isManagement(): boolean {
-    return this.auth.role() === 'GERENCIA';
+
+  protected open(): void {
+    this.form.reset();
+    this.modalOpen.set(true);
   }
 
   protected load(): void {
     this.loading.set(true);
-    this.logs.list().subscribe((list) => {
-      this.records.set(list);
-      this.loading.set(false);
-    });
-    this.audit.list().subscribe((a) => this.auditCount.set(a.length));
-  }
-
-  protected date(iso: string): string {
-    return new Date(iso).toLocaleString('es-GT', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    this.service.list().subscribe({
+      next: (list) => {
+        this.reportes.set(list);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
     });
   }
 
-  protected exportCsv(): void {
-    const header = ['Fecha', 'Titular', 'Zona', 'Estacion', 'Tipo', 'Resultado', 'RegistradoPor'];
-    const lines = this.records().map((r) =>
-      [
-        new Date(r.timestamp).toISOString(),
-        r.titular,
-        r.zona,
-        r.estacion,
-        r.tipo,
-        r.resultado,
-        r.registradoPor,
-      ]
-        .map((c) => `"${String(c).replace(/"/g, '""')}"`)
-        .join(','),
-    );
-    const csv = [header.join(','), ...lines].join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  protected generate(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+    const v = this.form.value;
+    if (v.desde! > v.hasta!) {
+      this.toast.error('Rango inválido', 'La fecha inicial no puede ser posterior a la final.');
+      return;
+    }
+    this.generating.set(true);
+    this.service
+      .generar({
+        desde: v.desde!,
+        hasta: v.hasta!,
+        personaId: v.personaId ? +v.personaId : undefined,
+        zonaId: v.zonaId ? +v.zonaId : undefined,
+        tipoEvento: v.tipoEvento || undefined,
+      })
+      .subscribe({
+        next: (blob) => {
+          this.generating.set(false);
+          this.modalOpen.set(false);
+          this.download(blob, `sciad-reporte-${v.desde}_a_${v.hasta}.csv`);
+          this.toast.success('Reporte generado', 'Descarga CSV en curso.');
+          this.load();
+        },
+        error: (e) => {
+          this.generating.set(false);
+          const detail = (e as { error?: { detail?: string } })?.error?.detail;
+          this.toast.error('Error', detail ?? 'No se pudo generar el reporte.');
+        },
+      });
+  }
+
+  private download(blob: Blob, name: string): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `sciad-reporte-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    this.toast.success('Exportación lista', `CSV con ${this.records().length} registros.`);
   }
 }
+

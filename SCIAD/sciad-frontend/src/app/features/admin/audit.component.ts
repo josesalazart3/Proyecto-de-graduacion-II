@@ -1,33 +1,26 @@
+// Auditoría e integridad (CU-08): Fase 3 lo reconcilia al backend real — AuditoriaHallazgoDto
+// {tipo, descripcion, personaId, personaNombre, estado:'abierto'|'en_revision'|'resuelto', fecha}.
+// "Verificar integridad" ejecuta POST /auditoria/verificar (solo Admin) y vuelve a cargar.
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { AuditService } from '../../core/services/crud.service';
-import {
-  InconsistenciaAuditoria,
-  HallazgoSeveridad,
-  HallazgoEstado,
-} from '../../core/models/audit.model';
+import { HallazgoAuditoria, HallazgoEstado } from '../../core/models/audit.model';
 import { Button } from '../../shared/ui/button.component';
 import { Card } from '../../shared/ui/card.component';
 import { Badge, StatusKey } from '../../shared/ui/badge.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
 
-const SEV_ORDER: Record<HallazgoSeveridad, number> = {
-  BAJA: 1,
-  MEDIA: 2,
-  ALTA: 3,
-  CRITICA: 4,
+function estBadge(e: HallazgoEstado): StatusKey {
+  return e === 'abierto' ? 'abierto' : e === 'en_revision' ? 'revisando' : 'resuelto';
+}
+const TIPO_LABELS: Record<string, string> = {
+  acceso_sin_egreso: 'Acceso sin egreso',
+  concentracion: 'Concentración inusual',
+  registro_duplicado: 'Registro duplicado',
 };
-const SEV_BADGE: Record<HallazgoSeveridad, StatusKey> = {
-  BAJA: 'baja',
-  MEDIA: 'media',
-  ALTA: 'alta',
-  CRITICA: 'critica',
-};
-const EST_BADGE: Record<HallazgoEstado, StatusKey> = {
-  ABIERTO: 'abierto',
-  EN_REVISION: 'revisando',
-  RESUELTO: 'resuelto',
-};
+function tipoLabel(tipo: string): string {
+  return TIPO_LABELS[tipo] ?? tipo;
+}
 
 @Component({
   selector: 'app-admin-audit',
@@ -40,7 +33,9 @@ const EST_BADGE: Record<HallazgoEstado, StatusKey> = {
           <h1>Auditoría e integridad</h1>
           <p class="page-sub">Inconsistencias detectadas en las bitácoras (CU-08 / CU-09).</p>
         </div>
-        <button sci-btn variant="secondary" size="md" iconName="refresh" (click)="load()">Re-verificar</button>
+        <button sci-btn variant="primary" size="md" iconName="activity" [loading]="verifying()" (click)="verify()">
+          Verificar integridad
+        </button>
       </div>
 
       <sci-card>
@@ -52,34 +47,33 @@ const EST_BADGE: Record<HallazgoEstado, StatusKey> = {
               }
             </tbody></table>
           } @else if (items().length === 0) {
-            <sci-empty-state icon="checkCircle" title="Sin inconsistencias" message="Todas las bitácoras verificadas sin hallazgos." />
+            <sci-empty-state icon="checkCircle" title="Sin hallazgos" message="Todas las bitácoras verificadas sin inconsistencias." />
           } @else {
             <div class="list">
-              @for (a of sorted(); track a.id) {
+              @for (a of items(); track a.id) {
                 <div class="item">
                   <div class="item-main">
                     <div class="item-head">
-                      <span class="item-type">{{ a.tipo }}</span>
-                      <sci-badge [status]="SEV_BADGE[a.severidad]" />
-                      <sci-badge [status]="EST_BADGE[a.estado]" />
+                      <span class="item-type">{{ tipoLabel(a.tipo) }}</span>
+                      <sci-badge [status]="estBadge(a.estado)" />
                     </div>
                     <p class="item-desc">{{ a.descripcion }}</p>
                     <div class="item-meta">
-                      @if (a.afectaBitacora && a.afectaBitacora !== '—') {
-                        <span class="chip mono">{{ a.afectaBitacora }}</span>
+                      @if (a.personaNombre) {
+                        <span class="chip">{{ a.personaNombre }}</span>
                       }
-                      <span class="muted subtle">{{ date(a.fechaDeteccion) }}</span>
+                      <span class="muted subtle">{{ a.fecha }}</span>
                     </div>
                   </div>
                   <div class="item-actions">
-                    @if (a.estado === 'ABIERTO') {
-                      <button sci-btn variant="secondary" size="sm" (click)="advance(a, 'EN_REVISION')">Iniciar revisión</button>
+                    @if (a.estado === 'abierto') {
+                      <button sci-btn variant="secondary" size="sm" (click)="advance(a, 'en_revision')">Iniciar revisión</button>
                     }
-                    @if (a.estado === 'EN_REVISION') {
-                      <button sci-btn variant="primary" size="sm" iconName="check" (click)="advance(a, 'RESUELTO')">Marcar resuelto</button>
+                    @if (a.estado === 'en_revision') {
+                      <button sci-btn variant="primary" size="sm" iconName="check" (click)="advance(a, 'resuelto')">Marcar resuelto</button>
                     }
-                    @if (a.estado === 'RESUELTO') {
-                      <button sci-btn variant="ghost" size="sm" (click)="advance(a, 'ABIERTO')">Reabrir</button>
+                    @if (a.estado === 'resuelto') {
+                      <button sci-btn variant="ghost" size="sm" (click)="advance(a, 'abierto')">Reabrir</button>
                     }
                   </div>
                 </div>
@@ -119,13 +113,11 @@ export class AuditComponent implements OnInit {
   private readonly service = inject(AuditService);
   private readonly toast = inject(ToastService);
 
-  protected readonly SEV_BADGE = SEV_BADGE;
-  protected readonly EST_BADGE = EST_BADGE;
+  protected readonly estBadge = estBadge;
+  protected readonly tipoLabel = tipoLabel;
   protected readonly loading = signal(true);
-  protected readonly items = signal<InconsistenciaAuditoria[]>([]);
-
-  protected sorted = () =>
-    [...this.items()].sort((a, b) => SEV_ORDER[b.severidad] - SEV_ORDER[a.severidad]);
+  protected readonly verifying = signal(false);
+  protected readonly items = signal<HallazgoAuditoria[]>([]);
 
   ngOnInit(): void {
     this.load();
@@ -133,30 +125,41 @@ export class AuditComponent implements OnInit {
 
   protected load(): void {
     this.loading.set(true);
-    this.toast.info('Verificación en curso', 'Analizando integridad de bitácoras…');
-    this.service.list().subscribe((list) => {
-      this.items.set(list);
-      this.loading.set(false);
+    this.service.list().subscribe({
+      next: (list) => {
+        this.items.set(list);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
     });
   }
 
-  protected advance(a: InconsistenciaAuditoria, estado: HallazgoEstado): void {
-    this.service.cambiarEstado(a.id, estado).subscribe({
+  protected verify(): void {
+    this.verifying.set(true);
+    this.service.verificar().subscribe({
+      next: (res) => {
+        this.verifying.set(false);
+        const detalle =
+          res.hallazgosCreados === 0 && res.notificacionesGeneradas === 0
+            ? 'Sin inconsistencias detectadas.'
+            : `${res.hallazgosCreados} hallazgo(s), ${res.notificacionesGeneradas} notificación(es).`;
+        this.toast.info('Verificación completada', detalle);
+        this.load();
+      },
+      error: () => {
+        this.verifying.set(false);
+        this.toast.error('Error', 'La verificación no se pudo ejecutar.');
+      },
+    });
+  }
+
+  protected advance(a: HallazgoAuditoria, estado: HallazgoEstado): void {
+    this.service.setEstado(a.id, estado).subscribe({
       next: () => {
-        this.toast.success('Estado actualizado', a.tipo);
+        this.toast.success('Estado actualizado', tipoLabel(a.tipo));
         this.load();
       },
       error: () => this.toast.error('Error', 'No se pudo actualizar.'),
-    });
-  }
-
-  protected date(iso: string): string {
-    return new Date(iso).toLocaleDateString('es-GT', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
   }
 }

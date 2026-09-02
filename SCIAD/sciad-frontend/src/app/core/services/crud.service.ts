@@ -1,128 +1,238 @@
-// Servicios de dominio. Todos usan HttpClient contra `/api/**` vía el
-// interceptor mock (Fase 1). En Fase 2 solo cambia la URL base.
+// Servicios de dominio. Reconciliados al contrato real del backend (Fase 3):
+// rutas reales (/usuarios, /zonas-acceso, /registros-acceso, …), payloads reales
+// (correo, password obligatoria, token+zonaId, asignación persona+zona+vigencia, …)
+// y desempaque de PaginadoDto [{items,total,…}] → items.
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 import { Usuario } from '../models/user.model';
 import { Zona, PerfilAcceso } from '../models/access.model';
+import { Persona, PersonaPayload } from '../models/persona.model';
 import { Credencial } from '../models/credential.model';
 import {
-  RegistroAcceso,
+  AccesoDelDia,
   Notificacion,
+  RegistroAccesoResultado,
+  RegistroHistorial,
 } from '../models/access-log.model';
-import { InconsistenciaAuditoria, HallazgoEstado } from '../models/audit.model';
+import { HallazgoAuditoria, HallazgoEstado, VerificacionAuditoriaResultado } from '../models/audit.model';
+import { Reporte } from '../models/reporte.model';
+import { Paginado } from '../models/paginado.model';
 
 const API = environment.apiUrl;
+
+/** Desempaqueta PaginadoDto → items (el frontend no necesita paginación real). */
+function unwrapItems<T>() {
+  return map((page: Paginado<T>) => page.items);
+}
 
 @Injectable({ providedIn: 'root' })
 export class UsersService {
   constructor(private http: HttpClient) {}
+  /** GET /api/usuarios?tamanoPagina=N → Usuario[] (desempaquetado). */
   list(): Observable<Usuario[]> {
-    return this.http.get<Usuario[]>(`${API}/users`);
+    const params = new HttpParams().set('tamanoPagina', '500');
+    return this.http.get<Paginado<Usuario>>(`${API}/usuarios`, { params }).pipe(unwrapItems());
   }
-  create(u: Usuario): Observable<Usuario> {
-    return this.http.post<Usuario>(`${API}/users`, u);
+  /** POST /api/usuarios — el backend espera `correo` (no email). */
+  create(u: Usuario & { password: string }): Observable<Usuario> {
+    return this.http.post<Usuario>(`${API}/usuarios`, {
+      nombre: u.nombre,
+      correo: u.email,
+      password: u.password,
+      rol: u.rol,
+      puesto: u.puesto,
+    });
   }
+  /** PUT /api/usuarios/{id}. */
   update(u: Usuario): Observable<Usuario> {
-    return this.http.put<Usuario>(`${API}/users/${u.id}`, u);
+    return this.http.put<Usuario>(`${API}/usuarios/${u.id}`, {
+      nombre: u.nombre,
+      correo: u.email,
+      rol: u.rol,
+      puesto: u.puesto,
+    });
   }
-  toggle(id: string): Observable<Usuario> {
-    return this.http.put<Usuario>(`${API}/users/${id}/toggle`, {});
+  /** PATCH /api/usuarios/{id}/estado {estado} (baja lógica). */
+  setEstado(id: string, estado: 'activo' | 'inactivo'): Observable<Usuario> {
+    return this.http.patch<Usuario>(`${API}/usuarios/${id}/estado`, { estado });
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class PersonasService {
+  constructor(private http: HttpClient) {}
+  /** GET /api/personas?tamanoPagina=N → Persona[]. */
+  list(): Observable<Persona[]> {
+    const params = new HttpParams().set('tamanoPagina', '500');
+    return this.http.get<Paginado<Persona>>(`${API}/personas`, { params }).pipe(unwrapItems());
+  }
+  create(p: PersonaPayload): Observable<Persona> {
+    return this.http.post<Persona>(`${API}/personas`, p);
+  }
+  update(p: Persona): Observable<Persona> {
+    return this.http.put<Persona>(`${API}/personas/${p.id}`, {
+      nombre: p.nombre,
+      dpiCodigo: p.dpiCodigo,
+      tipo: p.tipo,
+    });
+  }
+  /** PATCH /api/personas/{id}/estado (baja lógica). */
+  setEstado(id: string, estado: 'activo' | 'inactivo'): Observable<Persona> {
+    return this.http.patch<Persona>(`${API}/personas/${id}/estado`, { estado });
   }
 }
 
 @Injectable({ providedIn: 'root' })
 export class ZonasService {
   constructor(private http: HttpClient) {}
+  /** GET /api/zonas-acceso → Zona[] (sin paginar). */
   list(): Observable<Zona[]> {
-    return this.http.get<Zona[]>(`${API}/zonas`);
+    return this.http.get<Zona[]>(`${API}/zonas-acceso`);
+  }
+  create(z: { nombre: string; nivelSeguridad: string; nivelRiesgo: string; capacidad?: number | null }): Observable<Zona> {
+    return this.http.post<Zona>(`${API}/zonas-acceso`, {
+      nombre: z.nombre,
+      nivelSeguridad: z.nivelSeguridad,
+      nivelRiesgo: z.nivelRiesgo,
+      capacidad: z.capacidad ?? null,
+    });
+  }
+  update(z: Zona): Observable<Zona> {
+    return this.http.put<Zona>(`${API}/zonas-acceso/${z.id}`, {
+      nombre: z.nombre,
+      nivelSeguridad: z.nivelSeguridad,
+      nivelRiesgo: z.nivelRiesgo,
+      capacidad: z.capacidad ?? null,
+    });
+  }
+  /** PATCH /api/zonas-acceso/{id}/estado (baja lógica). */
+  setEstado(id: string, estado: 'activo' | 'inactivo'): Observable<Zona> {
+    return this.http.patch<Zona>(`${API}/zonas-acceso/${id}/estado`, { estado });
   }
 }
 
 @Injectable({ providedIn: 'root' })
 export class ProfilesService {
   constructor(private http: HttpClient) {}
-  list(): Observable<PerfilAcceso[]> {
-    return this.http.get<PerfilAcceso[]>(`${API}/perfiles`);
+  /** GET /api/perfiles-acceso?personaId&zonaId → PerfilAcceso[] (sin paginar). */
+  list(filtros?: { personaId?: string; zonaId?: string }): Observable<PerfilAcceso[]> {
+    let params = new HttpParams();
+    if (filtros?.personaId) params = params.set('personaId', filtros.personaId);
+    if (filtros?.zonaId) params = params.set('zonaId', filtros.zonaId);
+    return this.http.get<PerfilAcceso[]>(`${API}/perfiles-acceso`, { params });
   }
-  create(p: PerfilAcceso): Observable<PerfilAcceso> {
-    return this.http.post<PerfilAcceso>(`${API}/perfiles`, p);
+  /** POST /api/perfiles-acceso — asignación persona + zona + vigencia. */
+  create(p: { personaId: string; zonaId: string; vigenciaInicio: string; vigenciaFin: string }): Observable<PerfilAcceso> {
+    return this.http.post<PerfilAcceso>(`${API}/perfiles-acceso`, {
+      personaId: +p.personaId,
+      zonaId: +p.zonaId,
+      vigenciaInicio: p.vigenciaInicio,
+      vigenciaFin: p.vigenciaFin,
+    });
   }
-  update(p: PerfilAcceso): Observable<PerfilAcceso> {
-    return this.http.put<PerfilAcceso>(`${API}/perfiles/${p.id}`, p);
-  }
-  toggle(id: string): Observable<PerfilAcceso> {
-    return this.http.put<PerfilAcceso>(`${API}/perfiles/${id}/toggle`, {});
+  /** DELETE /api/perfiles-acceso/{id} (borrado físico permitido — entidad operativa). */
+  remove(id: string): Observable<void> {
+    return this.http.delete<void>(`${API}/perfiles-acceso/${id}`);
   }
 }
 
 @Injectable({ providedIn: 'root' })
 export class CredentialsService {
   constructor(private http: HttpClient) {}
-  list(): Observable<Credencial[]> {
-    return this.http.get<Credencial[]>(`${API}/credenciales`);
+  /** GET /api/credenciales?personaId → Credencial[] (historial, incluye revocadas). */
+  list(personaId?: string): Observable<Credencial[]> {
+    const params = personaId ? new HttpParams().set('personaId', personaId) : undefined;
+    return this.http.get<Credencial[]>(`${API}/credenciales`, { params });
   }
-  generar(payload: {
-    titular: string;
-    documento: string;
-    zonaIdPerfil: string;
-    emitidaPor: string;
-  }): Observable<Credencial> {
-    return this.http.post<Credencial>(`${API}/credenciales`, payload);
+  /** POST /api/credenciales/{personaId}/generar — genera la 1.ª credencial de la persona. */
+  generar(personaId: string): Observable<Credencial> {
+    return this.http.post<Credencial>(`${API}/credenciales/${personaId}/generar`, {});
   }
-  revocar(id: string, motivo: string): Observable<Credencial> {
-    return this.http.put<Credencial>(`${API}/credenciales/${id}/revocar`, { motivo });
+  /** POST /api/credenciales/{id}/reemitir — revoca la anterior y crea una nueva. */
+  reemitir(id: string): Observable<Credencial> {
+    return this.http.post<Credencial>(`${API}/credenciales/${id}/reemitir`, {});
   }
-  reemitir(id: string, emitidaPor: string): Observable<Credencial> {
-    return this.http.put<Credencial>(`${API}/credenciales/${id}/reemitir`, { emitidaPor });
+  /** POST /api/credenciales/{id}/revocar — revocación directa con motivo opcional. */
+  revocar(id: string, motivo?: string): Observable<Credencial> {
+    return this.http.post<Credencial>(`${API}/credenciales/${id}/revocar`, {
+      motivo: motivo ?? null,
+    });
   }
 }
 
 @Injectable({ providedIn: 'root' })
 export class AccessLogService {
   constructor(private http: HttpClient) {}
-  list(): Observable<RegistroAcceso[]> {
-    return this.http.get<RegistroAcceso[]>(`${API}/accesos`);
+  /** POST /api/registros-acceso {token, zonaId} — escaneo; el tipo se infiere en el servidor. */
+  escanear(payload: { token: string; zonaId: number }): Observable<RegistroAccesoResultado> {
+    return this.http.post<RegistroAccesoResultado>(`${API}/registros-acceso`, payload);
   }
-  escanear(payload: {
-    codigoQr: string;
-    operador: string;
-    estacion: string;
-  }): Observable<RegistroAcceso> {
-    return this.http.post<RegistroAcceso>(`${API}/accesos/escaneo`, payload);
+  /** GET /api/registros-acceso/hoy?zonaId → personas presentes hoy por zona. */
+  hoy(zonaId?: number): Observable<AccesoDelDia[]> {
+    const params = zonaId ? new HttpParams().set('zonaId', String(zonaId)) : undefined;
+    return this.http.get<AccesoDelDia[]>(`${API}/registros-acceso/hoy`, { params });
+  }
+  /** GET /api/registros-acceso (historial paginado, filtros opcionales) → RegistroHistorial[]. */
+  historial(filtros?: {
+    personaId?: number; zonaId?: number; desde?: string; hasta?: string; tipo?: 'ingreso' | 'egreso';
+  }): Observable<RegistroHistorial[]> {
+    let params = new HttpParams().set('tamanoPagina', '500');
+    if (filtros?.personaId) params = params.set('personaId', String(filtros.personaId));
+    if (filtros?.zonaId) params = params.set('zonaId', String(filtros.zonaId));
+    if (filtros?.desde) params = params.set('desde', filtros.desde);
+    if (filtros?.hasta) params = params.set('hasta', filtros.hasta);
+    if (filtros?.tipo) params = params.set('tipo', filtros.tipo);
+    return this.http.get<Paginado<RegistroHistorial>>(`${API}/registros-acceso`, { params }).pipe(unwrapItems());
   }
 }
 
 @Injectable({ providedIn: 'root' })
 export class NotificationsService {
   constructor(private http: HttpClient) {}
+  /** GET /api/notificaciones?tamanoPagina=N → Notificacion[]. */
   list(): Observable<Notificacion[]> {
-    return this.http.get<Notificacion[]>(`${API}/notificaciones`);
+    const params = new HttpParams().set('tamanoPagina', '500');
+    return this.http.get<Paginado<Notificacion>>(`${API}/notificaciones`, { params }).pipe(unwrapItems());
   }
-  marcarLeida(id: string): Observable<Notificacion> {
-    return this.http.put<Notificacion>(`${API}/notificaciones/${id}/leer`, {});
-  }
-  marcarTodasLeidas(): Observable<{ ok: boolean }> {
-    return this.http.put<{ ok: boolean }>(`${API}/notificaciones/leer-todas`, {});
+  /** PATCH /api/notificaciones/{id}/leida {leida}. */
+  setLeida(id: string, leida: boolean): Observable<Notificacion> {
+    return this.http.patch<Notificacion>(`${API}/notificaciones/${id}/leida`, { leida });
   }
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuditService {
   constructor(private http: HttpClient) {}
-  list(): Observable<InconsistenciaAuditoria[]> {
-    return this.http.get<InconsistenciaAuditoria[]>(`${API}/auditoria`);
+  /** GET /api/auditoria?tipo&estado → HallazgoAuditoria[]. */
+  list(filtros?: { tipo?: string; estado?: string }): Observable<HallazgoAuditoria[]> {
+    let params = new HttpParams().set('tamanoPagina', '500');
+    if (filtros?.tipo) params = params.set('tipo', filtros.tipo);
+    if (filtros?.estado) params = params.set('estado', filtros.estado);
+    return this.http.get<Paginado<HallazgoAuditoria>>(`${API}/auditoria`, { params }).pipe(unwrapItems());
   }
-  cambiarEstado(id: string, estado: HallazgoEstado): Observable<InconsistenciaAuditoria> {
-    return this.http.put<InconsistenciaAuditoria>(`${API}/auditoria/${id}/estado`, { estado });
+  /** PATCH /api/auditoria/{id}/estado. */
+  setEstado(id: string, estado: HallazgoEstado): Observable<HallazgoAuditoria> {
+    return this.http.patch<HallazgoAuditoria>(`${API}/auditoria/${id}/estado`, { estado });
+  }
+  /** POST /api/auditoria/verificar — ejecuta la verificación de integridad (solo Admin). */
+  verificar(): Observable<VerificacionAuditoriaResultado> {
+    return this.http.post<VerificacionAuditoriaResultado>(`${API}/auditoria/verificar`, {});
   }
 }
 
 @Injectable({ providedIn: 'root' })
-export class DashboardService {
+export class ReportsService {
   constructor(private http: HttpClient) {}
-  get(): Observable<any> {
-    return this.http.get<any>(`${API}/dashboard`);
+  /** GET /api/reportes → Reporte[] (paginado desempaquetado). */
+  list(): Observable<Reporte[]> {
+    const params = new HttpParams().set('tamanoPagina', '500');
+    return this.http.get<Paginado<Reporte>>(`${API}/reportes`, { params }).pipe(unwrapItems());
+  }
+  /** POST /api/reportes/generar → CSV (blob). El backend NO guarda el archivo; devuelve el CSV. */
+  generar(filtros: { desde: string; hasta: string; personaId?: number; zonaId?: number; tipoEvento?: string }): Observable<Blob> {
+    return this.http.post(`${API}/reportes/generar`, filtros, { responseType: 'blob' });
   }
 }

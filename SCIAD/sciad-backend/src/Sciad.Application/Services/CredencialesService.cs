@@ -110,6 +110,31 @@ public sealed class CredencialesService : ICredencialesService
         return ServicioResultado<CredencialDto>.Ok(CredencialDto.From(nueva));
     }
 
+    public async Task<ServicioResultado<CredencialDto>> RevocarAsync(
+        int id, string? motivo, CancellationToken ct = default)
+    {
+        var credencial = await _credenciales.FindByIdAsync(id, ct);
+        if (credencial is null)
+        {
+            return ServicioResultado<CredencialDto>.Fallo(CodigosError.NoEncontrado, "Credencial no encontrada.");
+        }
+
+        if (string.Equals(credencial.Estado, "revocada", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServicioResultado<CredencialDto>.Fallo(
+                CodigosError.Validacion, "La credencial ya está revocada.");
+        }
+
+        credencial.Estado = "revocada";
+        credencial.Motivo = motivo;
+        var actualizada = await _credenciales.ActualizarAsync(credencial, ct);
+
+        _logger.LogInformation(
+            "Credencial {CredencialId} revocada (persona={PersonaId}, motivo={Motivo}).",
+            id, credencial.PersonaId, motivo);
+        return ServicioResultado<CredencialDto>.Ok(CredencialDto.From(actualizada));
+    }
+
     public async Task<ServicioResultado<List<CredencialDto>>> ListarAsync(
         int? personaId, CancellationToken ct = default)
     {

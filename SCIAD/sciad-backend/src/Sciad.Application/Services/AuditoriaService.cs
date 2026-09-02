@@ -156,6 +156,7 @@ public sealed class AuditoriaService : IAuditoriaService
             Tipo = "concentracion",
             Mensaje = $"Concentración inusual de accesos en la zona '{zona}': {conteo} ingresos en los últimos {VentanaConcentracionMinutos} minutos.",
             Leida = false,
+            Fecha = DateTime.UtcNow,
         }, ct);
     }
 

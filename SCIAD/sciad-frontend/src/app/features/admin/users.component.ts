@@ -119,6 +119,15 @@ const ROL_OPTIONS = (Object.keys(ROL_LABELS) as Rol[]).map((r) => ({
         <sci-input formControlName="email" label="Correo electrónico" [error]="f('email')" />
         <sci-input formControlName="puesto" label="Puesto" />
         <sci-select formControlName="rol" label="Rol" [options]="rolOptions" />
+        @if (!editing()) {
+          <sci-input
+            formControlName="password"
+            type="password"
+            label="Contraseña"
+            placeholder="Mínimo 8 caracteres"
+            [error]="f('password')"
+          />
+        }
         <div sci-modal-actions>
           <button sci-btn variant="ghost" size="md" (click)="modalOpen.set(false)">Cancelar</button>
           <button sci-btn variant="primary" size="md" type="submit" [loading]="saving()">
@@ -192,6 +201,7 @@ export class UsersComponent implements OnInit {
     email: ['', [Validators.required, Validators.email]],
     puesto: ['', Validators.required],
     rol: ['ADMIN', Validators.required],
+    password: ['', [Validators.minLength(8), Validators.maxLength(72)]],
   });
 
   ngOnInit(): void {
@@ -217,6 +227,7 @@ export class UsersComponent implements OnInit {
     if (c?.touched && c.errors) {
       if (c.errors['required']) return 'Campo requerido.';
       if (c.errors['email']) return 'Correo no válido.';
+      if (c.errors['minlength']) return 'La contraseña debe tener al menos 8 caracteres.';
     }
     return null;
   }
@@ -261,7 +272,10 @@ export class UsersComponent implements OnInit {
       fechaCreacion: editing?.fechaCreacion ?? new Date().toISOString(),
     };
     this.saving.set(true);
-    const req = editing ? this.service.update(payload) : this.service.create(payload);
+    // Al crear el backend exige password (>= 8). Al editar es opcional y no se manda.
+    const req = editing
+      ? this.service.update(payload)
+      : this.service.create({ ...payload, password: v.password ?? '' });
     req.subscribe({
       next: () => {
         this.saving.set(false);
@@ -277,7 +291,7 @@ export class UsersComponent implements OnInit {
   }
 
   protected toggle(u: Usuario): void {
-    this.service.toggle(u.id).subscribe({
+    this.service.setEstado(u.id, u.activo ? 'inactivo' : 'activo').subscribe({
       next: () => {
         this.toast.info(u.activo ? 'Usuario desactivado' : 'Usuario activado');
         this.load();
