@@ -115,6 +115,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireSeguridadOAdmin", p => p.RequireRole("SEGURIDAD", "ADMIN"));
     // Trazabilidad (CU-06), auditoría (CU-08) y reportes (CU-07): Administrador O Gerencia/Auditoría.
     options.AddPolicy("RequireAdminOGerencia", p => p.RequireRole("ADMIN", "GERENCIA"));
+    // Lectura de zonas (CU-05 escaneo): cualquier rol — Seguridad necesita el desplegable de
+    // zonas para escanear y Gerencia/Admin lo consultan. La escritura queda Admin-only.
+    options.AddPolicy("RequireZonaLectura", p => p.RequireRole("ADMIN", "SEGURIDAD", "GERENCIA"));
 });
 
 // ---------- CORS (solo el origen del frontend) ----------

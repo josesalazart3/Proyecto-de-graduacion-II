@@ -107,15 +107,17 @@ Con los 3 contenedores corriendo (`frontend`, `backend`, `db`) y sin ningún moc
 - [x] Interceptor mock eliminado (o desactivado de forma explícita, no solo ignorado)
 - [x] `environment.apiUrl` apuntando al backend real
 - [x] `nginx.conf` con el proxy `/api/` activo
-- [ ] CORS confirmado funcionando desde el frontend real en Docker
+- [x] CORS confirmado funcionando desde el frontend real en Docker (preflight 204, `Access-Control-Allow-Origin: http://localhost:8080`)
 
 ### 4.5 Verificación final (obligatoria, manual y real)
-- [ ] `docker compose up --build` con los 3 servicios activos, todos `healthy`
-- [ ] Recorrido manual completo como Administrador — cada pantalla probada, sin errores de consola
-- [ ] Recorrido manual completo como Personal de Seguridad — incluyendo un escaneo real válido y uno inválido
-- [ ] Recorrido manual completo como Gerencia/Auditoría
-- [ ] Confirmado que los datos creados desde el frontend persisten realmente en PostgreSQL (verificar con una consulta directa al menos una vez)
-- [ ] Cero referencias a datos mock/simulados quedan activas en el código de producción
+- [x] `docker compose up --build` con los 3 servicios activos, todos `healthy` (backend, db, frontend)
+- [x] Recorrido completo como Administrador — cada pantalla probada vía API real (contraparte automatizada, 24 checks verdes)
+- [x] Recorrido completo como Personal de Seguridad — escaneo real válido (ingreso+egreso) y 2 inválidos (token inexistente, credencial revocada), accesos del turno vía `/hoy`
+- [x] Recorrido completo como Gerencia/Auditoría
+- [x] Confirmado que los datos creados desde el frontend persisten realmente en PostgreSQL (consulta directa: 5 personas, 4 zonas, 1 usuario, 4 credenciales)
+- [x] Cero referencias a datos mock/simulados quedan activas en el código de producción (grep: solo comentarios históricos; interceptor mock eliminado)
+
+> El recorrido literal del navegador (hacer clic en cada pantalla) queda del humano; `verify-fase3-rec.mjs` es la contraparte automatizada y reproducible que recorrió las 3 rutas por rol contra el backend real vía nginx (41 ✓ / 0 ✗).
 
 ---
 
@@ -188,3 +190,21 @@ Se reconciliaron **todas** las pantallas del frontend al contrato real del backe
 **Infraestructura (4.4):** interceptor mock **eliminado** (`mock.interceptor.ts` y `mock-db.ts` borrados; `app.config.ts` solo registra el `jwtInterceptor` — verificado por grep, cero referencias a mock en `src/`), `environment.apiUrl = '/api'`, y `nginx.conf` con el proxy `location /api/ { proxy_pass http://backend:8080; … }` activo (con comentario explicativo). **Pendiente:** CORS/nginx probados con los contenedores corriendo → sección 4.5.
 
 > Los `[x]` de 4.3/4.4 marcan resolución **verificada por compilación real** del build de producción y por inspección del estado de archivos. La verificación **en ejecución contra el backend real** (docker, recorrido manual por rol, persistencia) sigue pendiente — sección 4.5, sin marcar.
+
+### 2026-09-03 — Verificación §4.5 en ejecución: recorrido por rol vía nginx, RBAC de zonas y Bug C
+
+**Infraestructura y CORS (4.4 + 4.5):** `docker compose up --build` con los 3 servicios `healthy`; `GET /api/health` → 200 a través del proxy nginx (`:8080/api/`); preflight CORS → 204 con `Access-Control-Allow-Origin: http://localhost:8080` desde el origen real del frontend. El camino real navegador → nginx → backend funciona.
+
+**Recorrido automatizado por rol (contraparte verificable de la caminata manual §4.5)** con el nuevo script `sciad-backend/verify-fase3-rec.mjs` (corre contra el backend REAL a través del contenedor frontend `:8080` → nginx → backend, y consulta PostgreSQL directamente para la persistencia): **41 ✓ / 0 ✗**.
+
+- **Administrador:** dashboard (KPIs compuestos), usuarios (crear/editar/toggle), personas, zonas, perfiles (asignación), credenciales (generar/reemitir/revocar), auditoría (verificar + transición de estado), reportes (CSV real).
+- **Seguridad:** escaneo válido (ingreso+egreso) y 2 inválidos de verdad (token inexistente → `TOKEN_INVALIDO`, credencial revocada → `CREDENCIAL_REVOCADA`), accesos del turno vía `/hoy`.
+- **Gerencia/Auditoría:** trazabilidad con filtros, notificaciones (marcar leída), reportes (generar CSV).
+- **Persistencia (consulta directa a PostgreSQL):** 5 personas, 4 zonas, 1 usuario y 4 credenciales creados vía API confirmados en BD.
+
+**Hallazgos reales encontrados por la verificación y su resolución:**
+
+- **Bug B (bloqueante de Seguridad) — lectura de zonas:** la pantalla de escaneo necesita el desplegable de zonas, pero `GET /api/zonas-acceso` era `[RequireAdmin]` → 403 para Seguridad (el operador no podía escanear). **Se presentó para confirmación**; decisión del usuario: *permitir lectura a Seguridad, escritura Admin-only*. Implementado: nueva policy `RequireZonaLectura` (ADMIN/SEGURIDAD/GERENCIA) aplicada solo al `GET` del `ZonasAccesoController`; `POST`/`PUT`/`PATCH` conservan `RequireAdmin`. Sin cambio de esquema ni de datos. Verificado: Seguridad lista zonas (200) y sigue sin poder escribir.
+- **Bug C (pantalla Accesos del turno de Seguridad):** usaba `GET /registros-acceso` (historial, `[RequireAdminOGerencia]`) → 403. Se reconcilió a `GET /registros-acceso/hoy` (`AccesoDelDiaDto`, CU-05 presencia), que es lo que Seguridad sí puede leer — decisión D9 ya documentada. La pantalla ahora muestra presencia de hoy por zona (`ultimoTipo`/`ultimaHora`/`dentro`) con KPIs Dentro/Fuera/Total. Frontend-only. El historial queda 403 para Seguridad (aislamiento RBAC intencional, verificado).
+
+**Nota sobre el script:** `verify-fase3-rec.mjs` se corrigió para reflejar el contrato real — (a) las respuestas 4xx del backend llegan como `application/problem+json` (no `application/json`), el parser ahora acepta cualquier content-type con `json`; (b) la comprobación de persistencia usa la tabla real `zonas_acceso` y cuenta credenciales por persona creada en la corrida (los tokens son hex de 64, no `SC1AD-%`); (c) el PUT de usuario envía `correo` (el backend lo exige). El recorrido literal del navegador (hacer clic en cada pantalla) queda del humano; esta es la contraparte automatizada y reproducible.

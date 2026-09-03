@@ -7,9 +7,12 @@ using Sciad.Application.Interfaces;
 
 namespace Sciad.Api.Controllers;
 
-/// <summary>CRUD de zonas de acceso. Solo rol Administrador.</summary>
+/// <summary>
+/// CRUD de zonas de acceso. La lectura (GET) está abierta a cualquier rol (Seguridad la necesita
+/// para el desplegable del escaneo, CU-05); la escritura (crear/editar/estado) es solo Admin.
+/// </summary>
 [ApiController]
-[Authorize(Policy = "RequireAdmin")]
+[Authorize]
 [Route("api/zonas-acceso")]
 public sealed class ZonasAccesoController : ControllerBase
 {
@@ -20,8 +23,9 @@ public sealed class ZonasAccesoController : ControllerBase
         _zonas = zonas;
     }
 
-    /// <summary>Lista todas las zonas de acceso.</summary>
+    /// <summary>Lista todas las zonas de acceso (cualquier rol autenticado).</summary>
     [HttpGet]
+    [Authorize(Policy = "RequireZonaLectura")]
     [ProducesResponseType(typeof(IReadOnlyList<ZonaDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Listar(CancellationToken ct)
     {
@@ -30,6 +34,7 @@ public sealed class ZonasAccesoController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "RequireAdmin")]
     [ProducesResponseType(typeof(ZonaDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Crear([FromBody] CrearZonaRequest request, CancellationToken ct)
@@ -41,6 +46,7 @@ public sealed class ZonasAccesoController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = "RequireAdmin")]
     [ProducesResponseType(typeof(ZonaDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -52,6 +58,7 @@ public sealed class ZonasAccesoController : ControllerBase
 
     /// <summary>Alta/baja lógica: <c>{"estado":"activo|inactivo"}</c>. Nunca borrado físico.</summary>
     [HttpPatch("{id:int}/estado")]
+    [Authorize(Policy = "RequireAdmin")]
     [ProducesResponseType(typeof(ZonaDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

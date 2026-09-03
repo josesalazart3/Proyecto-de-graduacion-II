@@ -1,17 +1,15 @@
-// Accesos del turno (CU-06): Fase 3 lo reconcilia al backend real — GET /registros-acceso
-// (historial paginado) filtrado a hoy, con persona/zona/tipo/hora reales. Solo se persisten
-// escaneos autorizados; los rechazos no quedan en bitácoras.
+// Accesos del turno (CU-05): Fase 3 lo reconcilia al backend real — GET /registros-acceso/hoy
+// (AccesoDelDiaDto), que es el endpoint que el rol Personal de Seguridad SÍ puede leer
+// ([RequireSeguridadOAdmin]). El historial completo (GET /registros-acceso, RegistroHistorialDto)
+// es de Admin/Gerencia, así que esta pantalla de Seguridad muestra la presencia de hoy por zona
+// (persona, zona, último movimiento y si está dentro) en lugar de la bitácora de movimientos.
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { AccessLogService } from '../../core/services/crud.service';
-import { RegistroHistorial } from '../../core/models/access-log.model';
+import { AccesoDelDia } from '../../core/models/access-log.model';
 import { Button } from '../../shared/ui/button.component';
 import { Card } from '../../shared/ui/card.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
-
-function hoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 @Component({
   selector: 'app-access-log',
@@ -22,19 +20,19 @@ function hoyISO(): string {
       <div class="log-head">
         <div class="page-heading">
           <h1>Accesos del turno</h1>
-          <p class="page-sub">Registros de ingreso/egreso de hoy (CU-06).</p>
+          <p class="page-sub">Personas presentes en las zonas hoy (CU-05).</p>
         </div>
         <button sci-btn variant="ghost" size="sm" iconName="refresh" (click)="load()">Actualizar</button>
       </div>
 
       <div class="stats">
         <div class="stat">
-          <div class="stat-val ok mono">{{ counts().ingresos }}</div>
-          <div class="stat-lab">Ingresos</div>
+          <div class="stat-val ok mono">{{ counts().dentro }}</div>
+          <div class="stat-lab">Dentro</div>
         </div>
         <div class="stat">
-          <div class="stat-val bad mono">{{ counts().egresos }}</div>
-          <div class="stat-lab">Egresos</div>
+          <div class="stat-val bad mono">{{ counts().fuera }}</div>
+          <div class="stat-lab">Fuera</div>
         </div>
         <div class="stat">
           <div class="stat-val mono">{{ counts().total }}</div>
@@ -45,19 +43,19 @@ function hoyISO(): string {
       @if (loading()) {
         <div class="skels">@for (i of [1,2,3,4,5]; track i) { <div class="skel"></div> }</div>
       } @else if (rows().length === 0) {
-        <sci-card><sci-empty-state icon="clock" title="Sin accesos hoy" message="Aún no hay registros de acceso hoy." /></sci-card>
+        <sci-card><sci-empty-state icon="clock" title="Sin movimientos hoy" message="Aún no hay registros de acceso hoy." /></sci-card>
       } @else {
         <div class="list">
-          @for (r of rows(); track r.id) {
-            <div class="row" [class]="'r-' + r.tipo">
+          @for (r of rows(); track r.personaId + '-' + r.zonaId) {
+            <div class="row" [class]="r.dentro ? 'r-ingreso' : 'r-egreso'">
               <span class="row-dot"></span>
               <div class="row-main">
                 <div class="row-title">{{ r.personaNombre }}</div>
-                <div class="row-sub">{{ r.zonaNombre }} · {{ r.registradoPor }}</div>
+                <div class="row-sub">{{ r.zonaNombre }} · {{ r.dentro ? 'dentro' : 'fuera' }}</div>
               </div>
               <div class="row-right">
-                <span class="row-type mono">{{ r.tipo === 'ingreso' ? 'IN' : 'OUT' }}</span>
-                <span class="mono">{{ r.hora.slice(0, 5) }}</span>
+                <span class="row-type mono">{{ r.ultimoTipo === 'ingreso' ? 'IN' : 'OUT' }}</span>
+                <span class="mono">{{ (r.ultimaHora || '').slice(0, 5) }}</span>
               </div>
             </div>
           }
@@ -100,7 +98,6 @@ function hoyISO(): string {
       .row-main { flex: 1; min-width: 0; }
       .row-title { font-weight: 600; font-size: 14px; color: var(--text); }
       .row-sub { font-size: 12px; color: var(--text-muted); }
-      .row-motivo { font-size: 12px; color: var(--text-subtle); margin-top: 2px; }
       .row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; color: var(--text-muted); }
     `,
   ],
@@ -110,20 +107,18 @@ export class AccessLogComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   protected readonly loading = signal(true);
-  protected readonly records = signal<RegistroHistorial[]>([]);
+  protected readonly records = signal<AccesoDelDia[]>([]);
 
   protected readonly counts = computed(() => {
-    const rows = this.rows();
+    const rows = this.records();
     return {
       total: rows.length,
-      ingresos: rows.filter((r) => r.tipo === 'ingreso').length,
-      egresos: rows.filter((r) => r.tipo === 'egreso').length,
+      dentro: rows.filter((r) => r.dentro).length,
+      fuera: rows.filter((r) => !r.dentro).length,
     };
   });
   protected readonly rows = computed(() =>
-    [...this.records()]
-      .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1))
-      .slice(0, 40),
+    [...this.records()].sort((a, b) => ((a.ultimaHora || '') < (b.ultimaHora || '') ? 1 : -1)),
   );
 
   ngOnInit(): void {
@@ -132,7 +127,7 @@ export class AccessLogComponent implements OnInit {
 
   protected load(): void {
     this.loading.set(true);
-    this.service.historial({ desde: hoyISO(), hasta: hoyISO() }).subscribe({
+    this.service.hoy().subscribe({
       next: (list) => {
         this.records.set(list);
         this.loading.set(false);
