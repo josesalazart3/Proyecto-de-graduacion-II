@@ -228,3 +228,74 @@ Persistencia: **744 = 600 ondas + 40i/4e carrera + 100 realista**, confirmada co
 - No se relajó ninguna validación de seguridad existente para que las pruebas pasen; no se agregaron pruebas triviales para inflar el porcentaje.
 
 *La adenda cierra la brecha de cobertura documentada en la Fase 4: la capa de negocio alcanza **95,19 %** de cobertura de líneas (Application 95,00 % + Domain 97,56 %), superando el umbral DERCAS §9.1 de ≥80 %.*
+
+### 2026-09-15 — Reconciliación: la Bitácora de la adenda no coincidía con el repositorio
+
+**Motivación:** se detectó que `Sciad.Tests` contiene 12 archivos de prueba, no los 9 listados en la tabla "Suite de pruebas" de la adenda anterior. Esta entrada reconcilia la documentación con evidencia real — no se agregaron pruebas nuevas ni se tocó lógica de producción.
+
+#### 1. `dotnet test` de la suite completa tal como está hoy (los 12 archivos)
+
+Ejecutado dentro de Docker SDK (`mcr.microsoft.com/dotnet/sdk:8.0`, igual que la adenda anterior):
+
+```
+docker run --rm -v "$(pwd):/src" -w /src mcr.microsoft.com/dotnet/sdk:8.0 \
+  dotnet test tests/Sciad.Tests/Sciad.Tests.csproj \
+  --collect:"XPlat Code Coverage" \
+  --results-directory tests/TestResults \
+  --logger "console;verbosity=normal"
+```
+
+**Resultado: 162 passed / 0 failed / 0 skipped.** (Total tests: 162, tiempo 10.50 s). Se corrió dos veces — con build limpio y con `--no-build` — para confirmar que el número no depende de caché de compilación; el resultado fue idéntico ambas veces.
+
+#### 2. Cobertura recalculada (coverlet, Cobertura XML — no se reutilizó el 95,19 % anterior)
+
+Reporte generado en `tests/TestResults/90155833-d434-4412-84f3-7aa05f3a4a63/coverage.cobertura.xml` y parseado línea por línea (el atributo `lines-covered`/`lines-valid` del nodo raíz del XML venía a la mitad del valor real — inconsistencia conocida del rollup de coverlet al fusionar varios proyectos —, así que el conteo se hizo sumando directamente los nodos `<line>` de los 4 `<package>`, que sí son correctos y coinciden con `line-rate` por paquete):
+
+| Capa / módulo | Líneas detectadas | Líneas cubiertas | Cobertura |
+|---|---|---|---|
+| `Sciad.Application` | 2 040 | 1 938 | **95,00 %** |
+| `Sciad.Domain` | 164 | 160 | **97,56 %** |
+| **Negocio ponderado** | **2 204** | **2 098** | **95,19 %** ✅ |
+| `Sciad.Api` | 924 | 0 | 0 % |
+| `Sciad.Infrastructure` | 8 384 | 0 | 0 % |
+| Global (todas las asambleas) | 11 512 | 2 098 | 18,22 % |
+
+**Resultado: idéntico, cifra por cifra, al reportado en la adenda anterior (95,00 % / 97,56 % / 95,19 % / 18,22 %).** Esto no es reutilizar el número — es una recorrida completa e independiente que da el mismo resultado, lo cual es evidencia de que el reporte de cobertura de la adenda anterior **sí se generó corriendo el proyecto completo de 12 archivos**, aunque la tabla "Suite de pruebas" de esa misma entrada solo describiera 9.
+
+#### 3. Explicación de la discrepancia
+
+**No es que los 3 archivos se agregaran después y nunca se documentaran.** El historial de git muestra algo distinto:
+
+- `git log --follow` sobre cualquiera de los 12 archivos de `Sciad.Tests/` (los 9 "documentados" y los 3 "faltantes" por igual) devuelve **un único commit: `7951ed7` ("Pruebas", 2026-09-15)**. No existe ningún commit anterior donde el proyecto `Sciad.Tests` tuviera solo 9 archivos — los 12 se crearon y confirmaron juntos, en el mismo commit, en un solo diff de 2 643 líneas.
+- Ese mismo commit `7951ed7` modificó `BACKEND_4_SEGURIDAD_PLAN.md` y añadió **ambas** entradas de la Bitácora ("2026-09-09 — Fase 4 ejecutada y documentada" y "2026-09-09 — Adenda Fase 4: pruebas unitarias del backend") de una sola vez. Antes de ese commit, la sección "Bitácora de avance" del archivo estaba vacía (solo el placeholder de instrucciones). Es decir: **el texto de la adenda y el código de las 12 pruebas se escribieron y confirmaron en el mismo commit**, pero la fecha "2026-09-09" que encabeza ambas entradas no coincide con la fecha real del commit (`2026-09-15`, hoy) — quedó fechada seis días antes de cuando en realidad se creó.
+- Dentro de esa misma adenda, la tabla "Suite de pruebas" (9 archivos, filas que suman 110 pruebas) **nunca coincidió ni con su propio total declarado** ("**Total** | **9 archivos** | **162**"): 110 ≠ 162. Esa discontinuidad interna — el total correcto (162) junto a un desglose por archivo que no llega a ese total — es la huella de que la tabla de archivos se escribió a mano (probablemente copiada de un borrador anterior del plan, antes de terminar `RegistrosAccesoServiceTests.cs`, `AuthServiceTests.cs` y `TokenServiceTests.cs`), mientras que el número total (162) y la sección de cobertura sí se tomaron de una corrida real de `dotnet test` contra el proyecto ya completo de 12 archivos.
+- **Conclusión:** fue un olvido de documentación al momento de redactar/commitear la adenda — no una adición posterior de archivos sin documentar, ni una ejecución distinta de pruebas. El código, la corrida y la cobertura de esa adenda ya reflejaban los 12 archivos; solo la tabla descriptiva y la lista de archivos se quedaron con una versión anterior (9 archivos) del plan.
+
+#### 4. Tabla "Suite de pruebas" corregida (12 archivos, conteo real de `dotnet test`)
+
+Conteo obtenido de la salida real de `dotnet test --logger "console;verbosity=normal"` (agrupando por clase de prueba), no contado a mano por atributos `[Theory]`/`[Fact]` — `RbacPolicyTests.cs` genera sus 26 casos dinámicamente vía `[MemberData]` (24 combinaciones policy×rol + `TodaPolicyUsadaPorLosControladores_EstaDefinida` + `CableadoRbac_Controladores_CoincideConLaMatrizDocumentada`):
+
+| Capa | Archivo | Pruebas | Prioridad DERCAS |
+|---|---|---|---|
+| Credenciales | `CredencialesServiceTests.cs` | 14 | 2C (validación de escaneo) |
+| Personas | `PersonasServiceTests.cs` | 22 | 2C (CRUD administrativo) |
+| Usuarios | `UsuariosServiceTests.cs` | 13 | 2C (CRUD administrativo) |
+| Zonas | `ZonasServiceTests.cs` | 8 | 2C (CRUD zonas) |
+| PerfilesAcceso | `PerfilesAccesoServiceTests.cs` | 9 | 2C (asignación de acceso) |
+| Notificaciones | `NotificacionesServiceTests.cs` | 12 | 2D (auditoría/reglas) |
+| Reportes | `ReportesServiceTests.cs` | 7 | 2D (generación de reportes) |
+| Auditoría | `AuditoriaServiceTests.cs` | 16 | 2D (reglas de auditoría) |
+| RegistrosAcceso | `RegistrosAccesoServiceTests.cs` | 24 | 2C (escaneo QR, condición de carrera) |
+| Auth | `AuthServiceTests.cs` | 5 | SEC-04/SEC-08 (login, credenciales) |
+| Token | `TokenServiceTests.cs` | 6 | SEC-06 (emisión JWT) |
+| RBAC | `RbacPolicyTests.cs` | 26 | SEC-05 (políticas) |
+| **Total** | **12 archivos** | **162** | |
+
+(El total declarado, 162, coincide con el real — pero por casualidad, no porque el desglose fuera correcto: la tabla anterior subestimaba `Personas` en 12, `Credenciales`/`Usuarios` en 4 cada uno, `Notificaciones` en 5 y `PerfilesAcceso` en 2; sobreestimaba `Auditoría` en 8 y `RBAC` en 2; y omitía por completo `RegistrosAcceso`, `Auth` y `Token` — 35 pruebas entre los tres. Sus propias filas ya sumaban solo 110, no 162 — ver punto 3 —, así que el "162" de la tabla anterior nunca vino de sumar ese desglose.)
+
+#### Verificación final
+- **Suite completa reverificada hoy: 162 passed / 0 failed / 0 skipped**, sobre los 12 archivos reales — no sobre los 9 documentados previamente.
+- **Cobertura recalculada hoy, no reutilizada**: idéntica a la reportada (95,19 % negocio ponderado), lo que confirma que esa cifra ya era correcta.
+- No se agregaron pruebas nuevas ni se modificó lógica de producción en esta reconciliación — únicamente se corrigió la tabla descriptiva y se documentó la causa de la discrepancia.
+
+*Esta entrada no reemplaza la adenda anterior — la complementa con la tabla de archivos correcta y la trazabilidad de por qué no coincidía.*
