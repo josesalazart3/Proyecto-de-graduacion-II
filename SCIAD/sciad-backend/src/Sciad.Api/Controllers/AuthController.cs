@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Sciad.Api.Common;
 using Sciad.Application.Dtos.Auth;
 using Sciad.Application.Interfaces;
@@ -26,6 +27,7 @@ public sealed class AuthController : ControllerBase
     /// <summary>
     /// Inicia sesión con correo y contraseña. Devuelve <c>{ user, token }</c>.
     /// </summary>
+    [EnableRateLimiting("login")]
     [HttpPost("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

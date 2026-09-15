@@ -1,7 +1,12 @@
 # Secretos locales (nunca versionar)
 .env
+.env.prod
+.env.prod.local
 *.env.local
 
 # .NET
 sciad-backend/bin/
 sciad-backend/obj/
+sciad-backend/tests/**/bin/
+sciad-backend/tests/**/obj/
+sciad-backend/tests/TestResults/

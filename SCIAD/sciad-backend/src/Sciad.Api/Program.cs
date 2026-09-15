@@ -1,6 +1,10 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Sciad.Api.Common;
@@ -130,7 +134,68 @@ builder.Services.AddCors(o => o.AddPolicy("frontend", p =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// ---------- Rate limiting (SEC-04): mitigación de fuerza bruta en login ----------
+// Ventana fija por IP sobre /api/auth/login. Configurable vía sección "RateLimit"
+// (LoginPermitLimit / LoginWindowSeconds) con defaults 5 intentos / 5 minutos.
+// Al exceder el límite responde 429 como Problem Details, consistente con la API.
+var rateLimitSection = builder.Configuration.GetSection("RateLimit");
+var loginPermitLimit = rateLimitSection.GetValue<int>("LoginPermitLimit", 5);
+var loginWindowSeconds = rateLimitSection.GetValue<int>("LoginWindowSeconds", 300);
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("login", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = loginPermitLimit,
+                Window = TimeSpan.FromSeconds(loginWindowSeconds),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            }));
+
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = JsonDefaults.ContentType;
+        var pd = new Microsoft.AspNetCore.Mvc.ProblemDetails
+        {
+            Status = StatusCodes.Status429TooManyRequests,
+            Title = "Demasiadas solicitudes",
+            Detail = "Demasiados intentos de inicio de sesión desde esta IP. Espere unos minutos e intente nuevamente.",
+        };
+        pd.Extensions["code"] = "RATE_LIMITED";
+        pd.Extensions["message"] = pd.Detail;
+        await context.HttpContext.Response.WriteAsJsonAsync(pd, (JsonSerializerOptions)JsonDefaults.Web, ct);
+    };
+});
+
+// ---------- Forwarded headers (SEC-04/SEC-07): confía solo en proxies listados ----------
+// En producción el tráfico llega vía nginx (reverse proxy del frontend), que inyecta
+// X-Forwarded-For/X-Forwarded-Proto. Sin esta pieza, el rate limiter de login vería la IP
+// del contenedor nginx (una sola partición para todos los clientes). Por defecto NO se
+// confía en ningún proxy (KnownProxies vacío) → comportamiento idéntico en desarrollo y
+// sin riesgo de spoofing de X-Forwarded-For. En producción se lista la IP estática del
+// proxy vía `ForwardedHeaders__KnownProxies` (ver DESPLIEGUE.md).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    var proxies = (builder.Configuration["ForwardedHeaders:KnownProxies"] ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    foreach (var ip in proxies)
+    {
+        if (IPAddress.TryParse(ip, out var addr))
+        {
+            options.KnownProxies.Add(addr);
+        }
+    }
+});
+
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 // ---------- Migraciones + seed al arranque (idempotente) ----------
 using (var scope = app.Services.CreateScope())
@@ -143,6 +208,8 @@ using (var scope = app.Services.CreateScope())
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
 app.UseCors("frontend");
+
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
