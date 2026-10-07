@@ -1,3 +1,34 @@
+# INSTRUCCIONES PARA CLAUDE CODE — SCIAD · Fase 7.1 (parche)
+## Cerrar la evidencia de seguridad: OWASP sin autobloqueo, carga, y CSP sin WSL
+
+> Claude Code, en la computadora del usuario. Autocontenido; se aplica **después** de la Fase 7 (ya aplicada y commiteada). Es corto: léelo completo.
+
+## 0. REGLAS
+1. **LOCAL**: nada de `git commit`, `push`, ramas, `stash` ni `reset`; el usuario hace el commit al confirmarlo. `git apply` sin `--index` sí.
+2. **Docker autorizado.** No borres volúmenes (`down -v`) sin preguntar.
+3. Aplica el código tal cual; si un bloque no encaja, detente y pregunta. Corrige **solo** fallos reales que revelen las pruebas (cambio mínimo, explicado).
+4. **PG2_V2.docx no se modifica.** Los valores **por defecto** del sistema NO cambian: login 5 intentos/5 min por IP, límite global 1500/min. Este parche solo permite **elevarlos temporalmente para pruebas** y obliga a **restaurarlos** al terminar.
+5. Honestidad: reporta tal cual lo que muestren las pruebas, incluidos los ✗.
+
+## 1. Qué cierra este parche
+| Pendiente de la Fase 7 | Solución |
+|---|---|
+| `verify-owasp.mjs` daba 5 ✗: 4 por **autobloqueo** (hace ~10 inicios de sesión y el límite documentado es 5/5 min) | Dos pasadas: (1) todas las categorías con el límite **elevado solo para la prueba**; (2) `--solo-fuerza-bruta` con el límite **por defecto**, que demuestra el 5→429 de PG2. Si se lanza con el límite bajo, el script **aborta** con instrucciones en vez de dar falsos ✗ |
+| 5432 «expuesto» (era un PostgreSQL nativo de Windows) | Con `--docker` se pregunta a Docker (`docker inspect`): la BD del stack no publica puertos y la API solo en `127.0.0.1` |
+| `verify-carga` (7 ✗): el límite global de 1500/min chocaba con su preparación (~1320 peticiones + 300 escaneos desde una IP) | Límites configurables por variable al levantar el backend (por defecto idénticos); se corre la carga con el límite global elevado y se **restaura** |
+| `tests-fase7` (CSP con nginx real) no corrió en Windows | `tests-fase7/run-docker.ps1` / `.sh`: lo ejecutan dentro de un contenedor Linux con nginx y Chromium (sin WSL) |
+
+Rutas relativas a `SCIAD/`. `git apply --directory=SCIAD --whitespace=nowarn <diff>` desde la raíz del repo (sin `--index`).
+
+---
+
+## 2. PASO 0 — Comprobaciones
+`git status --short` (no debe haber cambios sin commit en estos archivos; si los hay, pregunta) y `git log --oneline -3` (Fase 7 aplicada). Anota que el stack actual está arriba con los límites por defecto.
+
+## 3. PASO 1 — Aplicar
+#### ♻️ REEMPLAZAR POR COMPLETO — `sciad-backend/verify-owasp.mjs`
+Nuevos modos `--solo-fuerza-bruta`, aborto con instrucciones si el límite es bajo, y comprobación de puertos vía `docker inspect`.
+````js
 // Verificación OWASP Top 10 (2021) contra el stack REAL. Una sección por categoría (A01–A10).
 //   node verify-owasp.mjs                        (stack de desarrollo: frontend :8080, API directa :3000)
 //   SCIAD_ENV=prod SCIAD_BASE=https://sciad.gt node verify-owasp.mjs      (producción)
@@ -248,3 +279,130 @@ info('límite documentado de login (5 intentos → 429): ejecute la pasada 2 →
 
 console.log(`\nRESULTADO OWASP Top 10: ${res.ok} ✓  ${res.fail} ✗  (${res.info} informativos)`);
 process.exit(res.fail ? 1 : 0);
+````
+
+#### 🔧 EDITAR (diff) — `docker-compose.yml`
+Límites de tasa configurables por variable (por defecto = PG2).
+````diff
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 89ea719..5906a48 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -53,6 +53,11 @@ services:
+       - Auditoria__CierreDiario__Hora=${AUDITORIA_CIERRE_HORA:-00:05}
+       # Hosts permitidos (cabecera Host). En desarrollo se acepta cualquiera (el túnel cambia de dominio en cada arranque).
+       - AllowedHosts=${ALLOWED_HOSTS:-*}
++      # Límites de tasa (SEC-04). Los valores por defecto son los de PG2 (5 intentos/5 min por IP en login; 1500/min global).
++      # Solo para PRUEBAS se pueden elevar al levantar el backend, p. ej.:  RATE_LIMIT_LOGIN_PERMIT=60 docker compose up -d backend
++      - RateLimit__LoginPermitLimit=${RATE_LIMIT_LOGIN_PERMIT:-5}
++      - RateLimit__LoginWindowSeconds=${RATE_LIMIT_LOGIN_WINDOW:-300}
++      - RateLimit__GlobalPermitLimit=${RATE_LIMIT_GLOBAL_PERMIT:-1500}
+     depends_on:
+       db:
+         condition: service_healthy
+````
+
+#### 🔧 EDITAR (diff) — `docker-compose.prod.yml`
+`RateLimit__GlobalPermitLimit` configurable (por defecto 1500).
+````diff
+diff --git a/docker-compose.prod.yml b/docker-compose.prod.yml
+index ab00a48..4dd5e90 100644
+--- a/docker-compose.prod.yml
++++ b/docker-compose.prod.yml
+@@ -70,6 +70,7 @@ services:
+       - ForwardedHeaders__KnownProxies=172.20.0.10
+       - RateLimit__LoginPermitLimit=${RATE_LIMIT_LOGIN_PERMIT:-5}
+       - RateLimit__LoginWindowSeconds=${RATE_LIMIT_LOGIN_WINDOW:-300}
++      - RateLimit__GlobalPermitLimit=${RATE_LIMIT_GLOBAL_PERMIT:-1500}
+       # Solo se aceptan peticiones con estos Host (el healthcheck usa localhost).
+       - AllowedHosts=${ALLOWED_HOSTS:-sciad.gt;www.sciad.gt;localhost}
+       # En producción NO se crean cuentas demo. El administrador inicial se declara aquí (contraseña fuerte, ≥ 12 caracteres).
+````
+
+#### 📄 NUEVO — `sciad-frontend/tests-fase7/run-docker.sh`
+Linux/macOS/WSL.
+````bash
+#!/usr/bin/env sh
+# Ejecuta la prueba de CSP/cabeceras (nginx REAL + Chromium + toda la app) dentro de un contenedor Linux:
+# no hace falta WSL ni instalar nginx en Windows. Requiere el build: `npx ng build --configuration production`.
+set -e
+cd "$(dirname "$0")/.."            # → sciad-frontend/
+[ -d dist/sciad-frontend/browser ] || { echo "Falta el build: npx ng build --configuration production" >&2; exit 1; }
+docker run --rm -v "$PWD:/src:ro" node:22-bookworm bash -c '
+  set -e
+  apt-get update -qq >/dev/null && apt-get install -y -qq nginx chromium >/dev/null
+  mkdir /work && tar -C /src --exclude=node_modules --exclude=.angular --exclude=.tmp -cf - . | tar -C /work -xf -
+  cd /work/tests-fase7 && npm install --no-audit --no-fund >/dev/null 2>&1
+  CHROME_PATH=/usr/bin/chromium node --no-warnings headers-csp.test.mjs
+'
+````
+
+#### 📄 NUEVO — `sciad-frontend/tests-fase7/run-docker.ps1`
+Windows (PowerShell).
+````powershell
+# Ejecuta la prueba de CSP/cabeceras (nginx REAL + Chromium + toda la app) dentro de un contenedor Linux (Windows, sin WSL).
+# Requiere el build: npx ng build --configuration production
+$ErrorActionPreference = 'Stop'
+Set-Location (Join-Path $PSScriptRoot '..')          # → sciad-frontend\
+if (-not (Test-Path 'dist\sciad-frontend\browser')) { Write-Error 'Falta el build: npx ng build --configuration production' }
+$script = @'
+set -e
+apt-get update -qq >/dev/null && apt-get install -y -qq nginx chromium >/dev/null
+mkdir /work && tar -C /src --exclude=node_modules --exclude=.angular --exclude=.tmp -cf - . | tar -C /work -xf -
+cd /work/tests-fase7 && npm install --no-audit --no-fund >/dev/null 2>&1
+CHROME_PATH=/usr/bin/chromium node --no-warnings headers-csp.test.mjs
+'@
+docker run --rm -v "${PWD}:/src:ro" node:22-bookworm bash -c $script
+````
+
+Comprueba que `docker compose config` sigue siendo válido (`docker compose -f docker-compose.yml config > NUL`).
+
+---
+
+## 4. PASO 2 — OWASP Top 10, pasada 1 (todas las categorías)
+```bash
+cd SCIAD
+RATE_LIMIT_LOGIN_PERMIT=60 docker compose up -d backend        # PowerShell: $env:RATE_LIMIT_LOGIN_PERMIT=60; docker compose up -d backend
+# espera a que el backend esté healthy (docker compose ps)
+SCIAD_LOGIN_LIMIT=60 node sciad-backend/verify-owasp.mjs --docker      # PowerShell: $env:SCIAD_LOGIN_LIMIT=60; node ...
+```
+Opcional: `--rapido` (omite la espera de 35 s) y `SCIAD_LAN_IP=<IP de este PC en la red>` (comprueba que 8080/3000 no responden desde la LAN).
+Si Angular quedó en una versión con advisory no explotable, `SCIAD_AUDIT_ALLOW=<GHSA>`.
+**Esperado: 0 ✗.** Cada ✗ es un hallazgo real: diagnostica (backend / nginx / datos previos / la prueba), corrige lo mínimo y repite. Reporta la tabla A01–A10 completa (✓/✗/ℹ) con la salida real.
+
+## 5. PASO 3 — OWASP, pasada 2 (el límite documentado de PG2)
+```bash
+docker compose up -d backend          # SIN variables: vuelve el límite por defecto (5 intentos / 5 min por IP) y limpia el contador
+# espera a healthy
+node sciad-backend/verify-owasp.mjs --solo-fuerza-bruta
+```
+**Esperado:** `401,401,401,401,401,429,429` y, con la IP bloqueada, el login correcto también da 429. Después `docker compose up -d backend` otra vez para limpiar el bloqueo (la IP queda bloqueada ~5 min).
+Confirma además `node sciad-backend/verify-rl.mjs` (debe seguir en verde).
+
+## 6. PASO 4 — Carga (RNF-04: 300 escaneos concurrentes)
+```bash
+RATE_LIMIT_GLOBAL_PERMIT=100000 RATE_LIMIT_LOGIN_PERMIT=60 docker compose up -d backend
+node sciad-backend/verify-carga.mjs
+docker compose up -d backend          # RESTAURAR los límites por defecto
+```
+Reporta los resultados **y compáralos con la medición anterior guardada** (busca en `sciad-backend/evidencia/` el reporte de carga previo y cita ambas cifras de P95). Si el P95 sigue sobre 2000 ms, indica si es la máquina (Docker Desktop) o la aplicación;
+**no modifiques** umbrales ni límites por defecto. Con la prueba hecha, confirma que el backend volvió a los límites por defecto (`docker compose exec backend printenv | findstr RateLimit` debe mostrar 5 / 300 / 1500).
+
+## 7. PASO 5 — CSP y cabeceras con nginx real, sin WSL
+```powershell
+cd SCIAD\sciad-frontend
+npx ng build --configuration production
+.\tests-fase7\run-docker.ps1        # Linux/macOS/WSL:  sh tests-fase7/run-docker.sh
+```
+**Esperado: `RESULTADO: 33 ✓  0 ✗`** (CSP sin violaciones en Admin, Seguridad en celular y Gerencia; nonce por petición; `no-store`; sin secretos en el JS; JWT en `sessionStorage`; el gafete impreso conserva su estilo).
+Si falla por entorno del contenedor (descarga de paquetes, Chromium), diagnostica y reporta; si falla por la aplicación (violación de CSP), corrige lo mínimo y explica. Los archivos generados dentro del contenedor no afectan tu carpeta (se monta solo lectura).
+
+## 8. PASO 6 — Informe (obligatorio)
+1. `git status --short` y `git diff --stat`.
+2. Resultados reales: OWASP pasada 1 (tabla A01–A10), pasada 2, `verify-rl`, `verify-carga` (con la comparación), `tests-fase7`, y que los límites quedaron en sus valores por defecto.
+3. Pendientes, cambios fuera del documento y riesgos aceptados.
+4. **Pregunta:** *«¿Hago el commit local?»* — no lo hagas sin confirmación (`git add -A && git commit -m "Fase 7.1: evidencia OWASP, carga y CSP sin WSL"`; local, sin push).
+
+## Nota sobre reproducibilidad (informativa)
+En la Fase 7 se añadió `apt-get upgrade` / `apk upgrade` a los Dockerfile para bajar vulnerabilidades. Eso reduce hallazgos de Trivy hoy, pero hace que dos builds en fechas distintas no sean idénticos. Alternativa a evaluar con el usuario (no aplicar sin su decisión):
+fijar las imágenes base por *digest* y reconstruir periódicamente.

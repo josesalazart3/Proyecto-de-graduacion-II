@@ -70,6 +70,7 @@ services:
       - ForwardedHeaders__KnownProxies=172.20.0.10
       - RateLimit__LoginPermitLimit=${RATE_LIMIT_LOGIN_PERMIT:-5}
       - RateLimit__LoginWindowSeconds=${RATE_LIMIT_LOGIN_WINDOW:-300}
+      - RateLimit__GlobalPermitLimit=${RATE_LIMIT_GLOBAL_PERMIT:-1500}
       # Solo se aceptan peticiones con estos Host (el healthcheck usa localhost).
       - AllowedHosts=${ALLOWED_HOSTS:-sciad.gt;www.sciad.gt;localhost}
       # En producción NO se crean cuentas demo. El administrador inicial se declara aquí (contraseña fuerte, ≥ 12 caracteres).
