@@ -59,16 +59,16 @@ reproducibles aquí (piloto de campo, usuarios reales, mediciones de 30 días).
 | **CA-01** | RF-01 | CRUD usuarios con RBAC; baja lógica (`estado=inactivo`) | ✅ Cumplido | RBAC automatizado (anon→401, rol sin permiso→403); CRUD completo en bitácora 2A/2B |
 | **CA-02** | RF-02 | Perfiles con zonas/horarios/vigencias, varias zonas | ✅ Cumplido | Bitácora 2B (FK, vigencia); 640 credenciales operando en corrida de carga N=500 usaron perfiles vigentes |
 | **CA-03** | RF-03 | Token QR único 64 hex (SHA-256); reemisión revoca anterior | ✅ Cumplido | SEC-06: `RandomNumberGenerator.GetBytes(32)` = 256 bits → 64 hex; 640 tokens reales sin colisión (corrida N=500); reemisión E2E 2B/2D |
-| **CA-04** | RF-04 | Escaneo → validación + registro ACID < 2 s; alerta visual | ✅ Cumplido | Anti-duplicado 40/40 bajo carrera (carga.md); P95 realista **59 ms**; alerta visual en Fase 3 |
+| **CA-04** | RF-04 | Escaneo → validación + registro ACID < 2 s; alerta visual | ✅ Cumplido | Anti-duplicado 40/40 bajo carrera (carga.md); P95 realista **53 ms**; alerta visual en Fase 3 |
 | **CA-05** | RF-05 | Reporte del día: presentes/ausentes por zona/tipo | ✅ Cumplido | E2E 2D + Fase 3 (reportes con datos reales) |
-| **CA-06** | RF-06 | Historial con filtros; latencia ≤ 5 s | ✅ Cumplido | Historial 1141 filas, 60 concurrentes → **P95 257 ms** (objetivo 5000 ms) |
+| **CA-06** | RF-06 | Historial con filtros; latencia ≤ 5 s | ✅ Cumplido | Historial 1141 filas, 60 concurrentes → **P95 293 ms** (objetivo 5000 ms) |
 | **CA-07** | RF-07 | Exportar CSV/PDF con trazabilidad; registro en `reportes` | ✅ Cumplido | E2E 2D (`reportes/generar` → archivo + fila en `reportes`) |
 | **CA-08** | RF-08 | Auditoría detecta: sin egreso, duplicados, token inválido, nulos, fuera de horario | ✅ Cumplido | `verify-2d.mjs` (hallazgos escritos en `auditoria`); bitácora 2D |
 | **CA-09** | RF-09 | Notificación automática de anomalías; visible en Portal | ✅ Cumplido | Trigger post-INSERT + `notificaciones`; Fase 3 (Portal) |
 | **CA-10** | RF-10 | Login → JWT 8 h; expiración; RBAC por endpoint | ✅ Cumplido | Matriz RBAC 152 checks; `Jwt__MinutosExpiracion=480`; token expirado→401 E2E Fase 3 |
 | **CA-11** | RNF-01 | HTTPS/TLS 1.3 obligatorio; QR sin datos legibles | ⚠️ Parcial | TLS documentado en DESPLIEGUE.md (SEC-07); QR = hash hex sin PII (SEC-06); captura Wireshark real → piloto |
 | **CA-12** | RNF-02 | Uptime ≥ 99.9% mensual | 🚫 Fuera del alcance | Requiere 30 días reales con monitoreo (Prometheus/Grafana) en piloto de campo |
-| **CA-13** | RNF-03 | P95 escaneo+registro < 2 s (500 concurrentes) | ⚠️ Parcial | 500 concurrentes a la escala del RNF: realista **P95 59 ms** ✅; burst puro sintético **3022 ms** (techo, ver §4); sostenido 5 min → piloto |
+| **CA-13** | RNF-03 | P95 escaneo+registro < 2 s (500 concurrentes) | ⚠️ Parcial | 500 concurrentes a la escala del RNF: realista **P95 53 ms** ✅; burst puro sintético **3961 ms** (techo, ver §4); sostenido 5 min → piloto |
 | **CA-14** | RNF-04 | 500 concurrentes sin 5xx ni timeout | ⚠️ Parcial | **1180 escaneos, 0 errores 5xx** (incl. **500 simultáneos** ✓, 0 timeouts); sostenida 5 min → piloto |
 | **CA-15** | RNF-05 | Chrome 90+, Safari 14+, Android 8+, iOS 14+ | 🚫 Fuera del alcance | Requiere matriz en dispositivos reales / BrowserStack; frontend Angular estándar |
 | **CA-16** | RNF-06 | Escrituras ACID; sin DELETE físico en históricas | ✅ Cumplido | PostgreSQL (ACID); revisión de dominio: soft-delete con `estado`, sin `Remove()` sobre históricos; UNIQUE anti-duplicado |
