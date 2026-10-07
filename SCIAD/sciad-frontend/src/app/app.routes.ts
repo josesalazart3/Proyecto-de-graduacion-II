@@ -63,6 +63,18 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/reports/reports.component').then((m) => m.ReportsComponent),
       },
+      // El backend permite al Administrador registrar accesos (RequireSeguridadOAdmin): se expone
+      // el mismo escáner para usarlo desde una computadora con cámara web.
+      {
+        path: 'escaneo',
+        loadComponent: () =>
+          import('./features/security/scan.component').then((m) => m.ScanComponent),
+      },
+      {
+        path: 'accesos',
+        loadComponent: () =>
+          import('./features/security/access-log.component').then((m) => m.AccessLogComponent),
+      },
     ],
   },
 

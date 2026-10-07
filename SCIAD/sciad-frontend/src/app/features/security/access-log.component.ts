@@ -10,6 +10,7 @@ import { Button } from '../../shared/ui/button.component';
 import { Card } from '../../shared/ui/card.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { horaLocal, hoyUtc } from '../../core/util/time';
 
 @Component({
   selector: 'app-access-log',
@@ -55,7 +56,7 @@ import { ToastService } from '../../shared/ui/toast.service';
               </div>
               <div class="row-right">
                 <span class="row-type mono">{{ r.ultimoTipo === 'ingreso' ? 'IN' : 'OUT' }}</span>
-                <span class="mono">{{ (r.ultimaHora || '').slice(0, 5) }}</span>
+                <span class="mono">{{ hora(r.ultimaHora) }}</span>
               </div>
             </div>
           }
@@ -108,6 +109,11 @@ export class AccessLogComponent implements OnInit {
 
   protected readonly loading = signal(true);
   protected readonly records = signal<AccesoDelDia[]>([]);
+
+  /** La hora llega en UTC del servidor ("hoy" = fecha UTC): se muestra en hora local. */
+  protected hora(h: string | null | undefined): string {
+    return horaLocal(hoyUtc(), h);
+  }
 
   protected readonly counts = computed(() => {
     const rows = this.records();

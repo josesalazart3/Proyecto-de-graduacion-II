@@ -9,6 +9,7 @@ import { Card } from '../../shared/ui/card.component';
 import { Button } from '../../shared/ui/button.component';
 import { Badge, StatusKey } from '../../shared/ui/badge.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
+import { fechaLocal, horaLocal } from '../../core/util/time';
 
 function badgeTipo(tipo: string): StatusKey {
   return tipo === 'ingreso' ? 'activo' : 'inactivo';
@@ -71,8 +72,8 @@ function badgeTipo(tipo: string): StatusKey {
               <tbody>
                 @for (r of rows(); track r.id) {
                   <tr>
-                    <td class="cell-muted">{{ r.fecha }}</td>
-                    <td class="cell-muted hide-sm">{{ r.hora.slice(0, 5) }}</td>
+                    <td class="cell-muted">{{ fechaDe(r) }}</td>
+                    <td class="cell-muted hide-sm">{{ horaDe(r) }}</td>
                     <td class="cell-strong">{{ r.personaNombre }}</td>
                     <td>{{ r.zonaNombre }}</td>
                     <td class="hide-sm"><sci-badge [status]="badgeTipo(r.tipo)" [label]="r.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'" /></td>
@@ -103,6 +104,10 @@ export class TraceabilityComponent implements OnInit {
   private readonly zonasSvc = inject(ZonasService);
 
   protected readonly badgeTipo = badgeTipo;
+
+  // fecha/hora vienen en UTC del servidor: se muestran en hora local del dispositivo.
+  protected fechaDe(r: RegistroHistorial): string { return fechaLocal(r.fecha, r.hora); }
+  protected horaDe(r: RegistroHistorial): string { return horaLocal(r.fecha, r.hora); }
   protected readonly loading = signal(true);
   protected readonly rows = signal<RegistroHistorial[]>([]);
   protected readonly personas = signal<Persona[]>([]);

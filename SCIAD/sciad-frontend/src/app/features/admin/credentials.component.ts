@@ -13,6 +13,8 @@ import { Modal } from '../../shared/ui/modal.component';
 import { SciInput, SciSelect } from '../../shared/ui/field.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { QrImage } from '../../shared/ui/qr-image.component';
+import { descargarQrPng, imprimirGafete } from '../../core/util/qr';
 
 function badgeFor(estado: string): StatusKey {
   return estado === 'activa' ? 'activo' : 'revocado';
@@ -31,6 +33,7 @@ function badgeFor(estado: string): StatusKey {
     SciInput,
     SciSelect,
     EmptyState,
+    QrImage,
   ],
   template: `
     <div class="page">
@@ -126,12 +129,24 @@ function badgeFor(estado: string): StatusKey {
 
     <!-- Ver QR -->
     <sci-modal [open]="viewOpen()" title="Credencial QR" (closed)="viewOpen.set(false)">
-      <div class="qr-view">
-        <div class="qr-box"><sci-icon name="qr" [size]="120" /></div>
-        <div class="qr-code mono">{{ selected()?.token }}</div>
-        <div class="qr-titular">{{ selected()?.personaNombre }}</div>
-        <div class="qr-sub">{{ estatusLabel() }}</div>
-      </div>
+      @if (selected(); as sel) {
+        <div class="qr-view">
+          <div class="qr-box" [class.qr-revoked]="sel.estado !== 'activa'">
+            <sci-qr [value]="sel.token" [size]="240" />
+            @if (sel.estado !== 'activa') {
+              <div class="qr-stamp">REVOCADA</div>
+            }
+          </div>
+          <div class="qr-titular">{{ sel.personaNombre }}</div>
+          <div class="qr-sub">{{ personaTipo(sel.personaId) }} · {{ estatusLabel() }}</div>
+          <div class="qr-code mono">{{ sel.token }}</div>
+          <p class="qr-note">El código contiene solo el token; no incluye datos personales.</p>
+          <div class="qr-actions">
+            <button sci-btn variant="secondary" size="md" iconName="download" (click)="descargar(sel)">Descargar PNG</button>
+            <button sci-btn variant="primary" size="md" iconName="printer" (click)="imprimir(sel)" [disabled]="sel.estado !== 'activa'">Imprimir gafete</button>
+          </div>
+        </div>
+      }
     </sci-modal>
   `,
   styles: [
@@ -148,13 +163,22 @@ function badgeFor(estado: string): StatusKey {
         text-align: center;
       }
       .qr-box {
-        padding: 16px;
-        border: 1px dashed var(--border-strong);
+        position: relative;
+        padding: 12px;
+        border: 1px solid var(--border-strong);
         border-radius: var(--radius-md);
-        background: var(--surface);
-        color: var(--text);
+        background: #fff;
+        color: #000;
       }
-      .qr-code { font-size: 16px; font-weight: 700; color: var(--text); word-break: break-all; }
+      .qr-box.qr-revoked sci-qr { opacity: 0.25; }
+      .qr-stamp {
+        position: absolute; inset: 0; display: grid; place-items: center;
+        font-weight: 800; font-size: 26px; letter-spacing: 0.1em; color: var(--sciad-danger);
+        transform: rotate(-14deg);
+      }
+      .qr-code { font-size: 11px; font-weight: 600; color: var(--text-muted); word-break: break-all; max-width: 320px; }
+      .qr-note { font-size: 12px; color: var(--text-subtle); max-width: 320px; }
+      .qr-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 4px; }
       .qr-titular { font-weight: 600; font-size: 15px; color: var(--text); }
       .qr-sub { font-size: 13px; color: var(--text-muted); }
     `,
@@ -289,6 +313,22 @@ export class CredentialsComponent implements OnInit {
   protected previewToken(c: Credencial): void {
     this.selected.set(c);
     this.viewOpen.set(true);
+  }
+
+  protected async descargar(c: Credencial): Promise<void> {
+    try {
+      await descargarQrPng(c.token, c.personaNombre);
+    } catch {
+      this.toast.error('Error', 'No se pudo generar la imagen del QR.');
+    }
+  }
+
+  protected async imprimir(c: Credencial): Promise<void> {
+    try {
+      await imprimirGafete({ token: c.token, titular: c.personaNombre, tipo: this.personaTipo(c.personaId) });
+    } catch {
+      this.toast.error('Error', 'No se pudo preparar la impresión del gafete.');
+    }
   }
 
   protected estatusLabel(): string {

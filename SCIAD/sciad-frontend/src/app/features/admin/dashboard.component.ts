@@ -11,6 +11,7 @@ import {
 } from '../../core/services/crud.service';
 import { RegistroHistorial } from '../../core/models/access-log.model';
 import { KpiCard } from '../../shared/ui/kpi-card.component';
+import { horaLocal } from '../../core/util/time';
 import { Card } from '../../shared/ui/card.component';
 
 @Component({
@@ -56,7 +57,7 @@ import { Card } from '../../shared/ui/card.component';
                           {{ ev.tipo === 'ingreso' ? 'Ingreso' : 'Egreso' }}
                         </span>
                       </div>
-                      <div class="event-sub">{{ ev.zonaNombre }} · {{ ev.hora.slice(0, 5) }}</div>
+                      <div class="event-sub">{{ ev.zonaNombre }} · {{ horaDe(ev) }}</div>
                     </div>
                   </div>
                 } @empty {
@@ -202,6 +203,11 @@ export class AdminDashboardComponent implements OnInit {
       );
       done();
     });
+  }
+
+  /** La hora del registro viene en UTC del servidor: se muestra en hora local. */
+  protected horaDe(ev: RegistroHistorial): string {
+    return horaLocal(ev.fecha, ev.hora);
   }
 
   protected time(iso: string): string {

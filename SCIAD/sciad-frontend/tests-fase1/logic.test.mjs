@@ -1,0 +1,38 @@
+process.env.TZ = 'America/Guatemala'; // portable (Windows/Linux/macOS); debe fijarse antes de usar Date
+import assert from 'node:assert/strict';
+import { extractToken, ScanGate, TOKEN_RE } from '../src/app/core/util/token.ts';
+import { horaLocal, fechaLocal, hoyUtc } from '../src/app/core/util/time.ts';
+
+let n = 0; const ok = (name, fn) => { fn(); n++; console.log('  ✓', name); };
+const T = 'A'.repeat(32) + '0123456789abcdef'.repeat(2);   // 64 hex
+assert.equal(T.length, 64);
+
+console.log('token.ts');
+ok('acepta token puro', () => assert.equal(extractToken(T), T));
+ok('recorta espacios/saltos', () => assert.equal(extractToken('  ' + T + '\n'), T));
+ok('extrae token dentro de URL', () => assert.equal(extractToken('https://x.gt/c/' + T + '?a=1'), T));
+ok('rechaza 63 y 65 hex', () => { assert.equal(extractToken(T.slice(1)), null); assert.equal(extractToken(T + 'a'), null); });
+ok('rechaza texto no hex / vacío / null', () => { assert.equal(extractToken('hola'), null); assert.equal(extractToken(''), null); assert.equal(extractToken(null), null); });
+ok('rechaza 64 chars con una letra no-hex', () => assert.equal(extractToken('g' + T.slice(1)), null));
+
+console.log('ScanGate');
+const g = new ScanGate({ holdMs: 2500, sameTokenMs: 15000 });
+ok('primer token se procesa', () => assert.equal(g.canProcess(T, 0), true));
+g.begin(T, 0);
+ok('bloquea mientras hay petición en curso (otro token)', () => assert.equal(g.canProcess('B'.repeat(64), 100), false));
+g.end(300);
+ok('bloquea todo durante holdMs tras terminar', () => assert.equal(g.canProcess('B'.repeat(64), 1000), false));
+ok('otro token pasa tras holdMs', () => assert.equal(g.canProcess('B'.repeat(64), 2900), true));
+ok('mismo token bloqueado hasta sameTokenMs', () => { assert.equal(g.canProcess(T, 5000), false); assert.equal(g.canProcess(T, 14999), false); });
+ok('mismo token permitido pasado sameTokenMs', () => assert.equal(g.canProcess(T, 15001), true));
+ok('forget() permite reintento inmediato (fallo de red)', () => { g.forget(); assert.equal(g.canProcess(T, 3000), true); });
+
+console.log('time.ts (backend guarda UTC; Guatemala = UTC-6)');
+const tz = process.env.TZ;
+ok('TZ del proceso = America/Guatemala', () => assert.equal(Intl.DateTimeFormat().resolvedOptions().timeZone, 'America/Guatemala'));
+ok('13:15:32Z → 07:15 local', () => assert.equal(horaLocal('2026-08-21', '13:15:32'), '07:15'));
+ok('acepta fracciones de segundo del servidor', () => assert.equal(horaLocal('2026-08-21', '13:15:32.1234567'), '07:15'));
+ok('00:30Z del día siguiente → 18:30 del día anterior (cruce de día)', () => { assert.equal(horaLocal('2026-08-22', '00:30:00'), '18:30'); assert.equal(fechaLocal('2026-08-22', '00:30:00'), '2026-08-21'); });
+ok('entradas inválidas no rompen (fallback)', () => { assert.equal(horaLocal(null, '13:15:32'), '13:15'); assert.equal(horaLocal('x', 'y'), 'y'.slice(0,5)); });
+ok('hoyUtc formato yyyy-mm-dd', () => assert.match(hoyUtc(), /^\d{4}-\d{2}-\d{2}$/));
+console.log(`\n${n} pruebas OK`);

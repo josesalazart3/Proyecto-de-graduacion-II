@@ -20,6 +20,8 @@ const NAV: NavItem[] = [
   { label: 'Credenciales QR', path: '/admin/credenciales', icon: 'qr', roles: ['ADMIN'] },
   { label: 'Auditoría', path: '/admin/auditoria', icon: 'activity', roles: ['ADMIN'] },
   { label: 'Reportes', path: '/admin/reportes', icon: 'file', roles: ['ADMIN'] },
+  { label: 'Punto de acceso', path: '/admin/escaneo', icon: 'scan', roles: ['ADMIN'] },
+  { label: 'Accesos de hoy', path: '/admin/accesos', icon: 'clock', roles: ['ADMIN'] },
 
   { label: 'Punto de acceso', path: '/seguridad/escaneo', icon: 'scan', roles: ['SEGURIDAD'] },
   { label: 'Accesos del turno', path: '/seguridad/accesos', icon: 'clock', roles: ['SEGURIDAD'] },
