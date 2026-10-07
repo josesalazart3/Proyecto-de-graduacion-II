@@ -15,8 +15,17 @@ services:
       context: ./sciad-frontend
       dockerfile: Dockerfile
     container_name: sciad-frontend
+    # Solo accesible desde ESTE equipo (127.0.0.1): el celular entra por el túnel HTTPS, no por la IP de la red local.
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
+    # Endurecimiento (OWASP A05): sin escalar privilegios y con el sistema de archivos de solo lectura.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     restart: unless-stopped
     healthcheck:
       # 127.0.0.1 (no "localhost"): nginx escucha solo en IPv4 y "localhost"
@@ -42,11 +51,22 @@ services:
       - Cors__Origins=${SCIAD_CORS_ORIGINS}
       # Hora (Guatemala) del cierre diario de auditoría. Por defecto 00:05; se cambia solo para probarlo (verify-cierre.mjs).
       - Auditoria__CierreDiario__Hora=${AUDITORIA_CIERRE_HORA:-00:05}
+      # Hosts permitidos (cabecera Host). En desarrollo se acepta cualquiera (el túnel cambia de dominio en cada arranque).
+      - AllowedHosts=${ALLOWED_HOSTS:-*}
     depends_on:
       db:
         condition: service_healthy
+    # Solo desde este equipo (127.0.0.1): la API/Swagger de desarrollo NO quedan expuestos a la red local.
     ports:
-      - "3000:8080"
+      - "127.0.0.1:3000:8080"
+    # Endurecimiento (OWASP A05): usuario no root (Dockerfile), sin capacidades, sin escalar privilegios, solo lectura.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: unless-stopped
     healthcheck:
       # Confirma que la API responde y que la BD está operativa (GET /api/health).
@@ -69,6 +89,9 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - sciad-db-data:/var/lib/postgresql/data
+    # SIN puertos publicados: la base de datos solo es alcanzable desde la red interna de Docker.
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s

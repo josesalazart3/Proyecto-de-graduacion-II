@@ -29,6 +29,10 @@ docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
 3. Instalar como app: Android/Chrome → ⋮ → *Agregar a la pantalla principal* · iPhone/Safari → Compartir → *Agregar a inicio*.
 4. Al terminar: `docker compose -f docker-compose.yml -f docker-compose.tunnel.yml stop tunnel`.
 
+🔐 **Antes de encender el túnel, cambia las contraseñas de las 3 cuentas demo** (`sciad123` es pública en esta guía): entra como Admin → **Usuarios** → editar → nueva contraseña (la API
+pide ≥ 8 caracteres; usa una larga). En el stack de desarrollo las cuentas demo existen por diseño; en **producción no se crean** (el administrador inicial se declara con `SCIAD_ADMIN_EMAIL` / `SCIAD_ADMIN_PASSWORD`).
+Además, los puertos de desarrollo (8080 y 3000) solo escuchan en `127.0.0.1`: ni la API ni Swagger quedan visibles en tu red local; el celular entra únicamente por el túnel HTTPS.
+
 ⚠ Mientras el túnel esté encendido la URL es pública. Úsalo solo para pruebas y no compartas la URL. Para uso real: VPS con dominio y TLS (`DESPLIEGUE.md`).
 
 ## 4. Qué debe pasar con cada persona de la demostración

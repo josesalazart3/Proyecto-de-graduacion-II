@@ -40,11 +40,9 @@ public sealed class AuthController : ControllerBase
             return Ok(result.Response);
         }
 
-        return result.CodigoError switch
-        {
-            LoginResult.UsuarioInactivo => ApiProblem.Forbidden("El usuario está inactivo. Contacte al administrador."),
-            _ => ApiProblem.Unauthorized("Credenciales inválidas."),
-        };
+        // Respuesta ÚNICA (401, mismo texto) para credenciales inválidas, correo desconocido, cuenta inactiva o bloqueada:
+        // distinguir «inactivo» sin conocer la contraseña revelaría qué correos existen (OWASP A07). El motivo real queda en el log.
+        return ApiProblem.Unauthorized("Credenciales inválidas.");
     }
 
     /// <summary>Devuelve el usuario autenticado a partir del token Bearer.</summary>

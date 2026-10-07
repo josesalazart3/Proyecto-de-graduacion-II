@@ -179,7 +179,7 @@ console.log('\n[4] Token vencido (401) → vuelve al login');
 {
   const page = await browser.newPage(); await page.setViewport({ width: 1100, height: 800 });
   await login(page, BASE, 'expira@sciad.gt');
-  const back = await page.waitForFunction(() => location.pathname === '/login' && !localStorage.getItem('sciad.session'), { timeout: 10000 }).then(() => true).catch(() => false);
+  const back = await page.waitForFunction(() => location.pathname === '/login' && !sessionStorage.getItem('sciad.session') && !localStorage.getItem('sciad.session'), { timeout: 10000 }).then(() => true).catch(() => false);
   check('401 en cualquier endpoint → sesión cerrada y redirige a /login', back);
   await page.close();
 }

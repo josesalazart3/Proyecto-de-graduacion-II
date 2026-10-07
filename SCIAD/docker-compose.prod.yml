@@ -24,6 +24,14 @@ services:
       dockerfile: Dockerfile.prod
     image: sciad-prod/frontend:latest
     container_name: sciad-prod-frontend
+    # Endurecimiento (OWASP A05)
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     ports:
       - "80:80"
       - "443:443"
@@ -62,6 +70,19 @@ services:
       - ForwardedHeaders__KnownProxies=172.20.0.10
       - RateLimit__LoginPermitLimit=${RATE_LIMIT_LOGIN_PERMIT:-5}
       - RateLimit__LoginWindowSeconds=${RATE_LIMIT_LOGIN_WINDOW:-300}
+      # Solo se aceptan peticiones con estos Host (el healthcheck usa localhost).
+      - AllowedHosts=${ALLOWED_HOSTS:-sciad.gt;www.sciad.gt;localhost}
+      # En producción NO se crean cuentas demo. El administrador inicial se declara aquí (contraseña fuerte, ≥ 12 caracteres).
+      - Seed__AdminEmail=${SCIAD_ADMIN_EMAIL}
+      - Seed__AdminPassword=${SCIAD_ADMIN_PASSWORD}
+    # Endurecimiento (OWASP A05): usuario no root (Dockerfile), sin capacidades, sin escalar privilegios, solo lectura.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       prod-net:
         ipv4_address: 172.20.0.20
@@ -87,6 +108,8 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - prod-db-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
     networks:
       prod-net:
         ipv4_address: 172.20.0.30

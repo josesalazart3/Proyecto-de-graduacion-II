@@ -47,10 +47,10 @@ check('manifest: 200 y application/manifest+json', r.status === 200 && /applicat
 check('manifest: Cache-Control no-cache', /no-cache/.test(r.h['cache-control'] ?? ''), r.h['cache-control']);
 const man = JSON.parse(r.body.toString());
 r = await get('/index.html');
-check('index.html: no-cache + Permissions-Policy cámara', /no-cache/.test(r.h['cache-control'] ?? '') && /camera=\(self\)/.test(r.h['permissions-policy'] ?? ''), `${r.h['cache-control']} | ${r.h['permissions-policy']}`);
-check('index.html: conserva cabeceras de seguridad', r.h['x-content-type-options'] === 'nosniff' && r.h['x-frame-options'] === 'SAMEORIGIN');
+check('index.html: sin caché (no-store) + Permissions-Policy cámara', /no-store|no-cache/.test(r.h['cache-control'] ?? '') && /camera=\(self\)/.test(r.h['permissions-policy'] ?? ''), `${r.h['cache-control']} | ${r.h['permissions-policy']}`);
+check('index.html: conserva cabeceras de seguridad', r.h['x-content-type-options'] === 'nosniff' && r.h['x-frame-options'] === 'DENY');
 r = await get('/seguridad/escaneo');
-check('ruta SPA (/seguridad/escaneo) cae a index.html SIN caché', r.status === 200 && /<app-root>/.test(r.body.toString()) && /no-cache/.test(r.h['cache-control'] ?? ''), r.h['cache-control']);
+check('ruta SPA (/seguridad/escaneo) cae a index.html SIN caché', r.status === 200 && /<app-root/.test(r.body.toString()) && /no-store|no-cache/.test(r.h['cache-control'] ?? ''), r.h['cache-control']);
 const js = readFileSync(path.join(DIST, 'index.html'), 'utf8').match(/main-[A-Za-z0-9_-]+\.js/)[0];
 r = await get('/' + js);
 check('asset con hash: caché larga immutable', /immutable/.test(r.h['cache-control'] ?? '') && r.status === 200, r.h['cache-control']);

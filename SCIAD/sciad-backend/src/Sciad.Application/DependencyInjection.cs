@@ -10,6 +10,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddSingleton<ITokenService, TokenService>();
+        services.AddSingleton<LoginAttemptTracker>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUsuariosService, UsuariosService>();
         services.AddScoped<IPersonasService, PersonasService>();

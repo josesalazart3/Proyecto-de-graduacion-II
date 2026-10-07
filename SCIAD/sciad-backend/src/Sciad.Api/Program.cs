@@ -1,4 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
@@ -6,9 +8,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using Sciad.Api.Common;
 using Sciad.Application;
+using Sciad.Application.Interfaces;
 using Sciad.Application.Options;
 using Sciad.Infrastructure;
 using Sciad.Infrastructure.Persistence;
@@ -16,6 +20,17 @@ using Serilog;
 using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---------- Kestrel endurecido (OWASP A05): sin cabecera Server, cuerpos y cabeceras acotados, timeouts ----------
+builder.WebHost.ConfigureKestrel(k =>
+{
+    k.AddServerHeader = false;
+    k.Limits.MaxRequestBodySize = 64 * 1024; // la API solo recibe JSON pequeño
+    k.Limits.MaxRequestHeadersTotalSize = 16 * 1024;
+    k.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(15);
+    k.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(60);
+});
+builder.Services.AddMemoryCache();
 
 // ---------- Logging estructurado (Serilog → JSON en consola) ----------
 builder.Host.UseSerilog((context, cfg) => cfg
@@ -77,9 +92,41 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.FromSeconds(30),
             NameClaimType = System.Security.Claims.ClaimTypes.Name,
             RoleClaimType = System.Security.Claims.ClaimTypes.Role,
+            // Solo HS256 (evita ataques de confusión de algoritmo / alg=none) y token siempre firmado y con expiración.
+            ValidAlgorithms = new[] { SecurityAlgorithms.HmacSha256 },
+            RequireSignedTokens = true,
+            RequireExpirationTime = true,
         };
         options.Events = new JwtBearerEvents
         {
+            // Sesión vigente en CADA petición (OWASP A01/A07): un usuario desactivado o con otro rol pierde el acceso en
+            // ≤ 30 s, aunque su JWT (8 h) no haya vencido. La consulta se cachea 30 s en memoria del servidor.
+            OnTokenValidated = async context =>
+            {
+                var idRaw = context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                            ?? context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var rolToken = context.Principal?.FindFirst(ClaimTypes.Role)?.Value;
+                if (!int.TryParse(idRaw, out var usuarioId) || string.IsNullOrEmpty(rolToken))
+                {
+                    context.Fail("Token sin identidad válida.");
+                    return;
+                }
+
+                var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
+                var repo = context.HttpContext.RequestServices.GetRequiredService<IUsuarioRepository>();
+                var vigente = await cache.GetOrCreateAsync($"sesion:{usuarioId}:{rolToken}", async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
+                    var u = await repo.FindByIdAsync(usuarioId, context.HttpContext.RequestAborted);
+                    return u is not null
+                           && string.Equals(u.Estado, "activo", StringComparison.OrdinalIgnoreCase)
+                           && string.Equals(u.Rol.Codigo, rolToken, StringComparison.Ordinal);
+                });
+                if (vigente != true)
+                {
+                    context.Fail("Sesión no vigente.");
+                }
+            },
             OnChallenge = async context =>
             {
                 context.HandleResponse();
@@ -131,7 +178,9 @@ builder.Services.AddAuthorization(options =>
 var corsOrigins = (builder.Configuration["Cors:Origins"] ?? "http://localhost:8080,http://localhost:4200")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(o => o.AddPolicy("frontend", p =>
-    p.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
+    p.WithOrigins(corsOrigins)
+        .WithHeaders("Authorization", "Content-Type")
+        .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE")));
 
 // ---------- Swagger / OpenAPI (desarrollo) ----------
 builder.Services.AddEndpointsApiExplorer();
@@ -145,9 +194,24 @@ var rateLimitSection = builder.Configuration.GetSection("RateLimit");
 var loginPermitLimit = rateLimitSection.GetValue<int>("LoginPermitLimit", 5);
 var loginWindowSeconds = rateLimitSection.GetValue<int>("LoginWindowSeconds", 300);
 
+var globalPermitLimit = rateLimitSection.GetValue<int>("GlobalPermitLimit", 1500);
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Límite GLOBAL por IP (OWASP A04 — abuso de recursos / DoS de aplicación). 1500/min por defecto: holgado a propósito
+    // para no afectar la carga objetivo documentada (300 escaneos concurrentes, RNF-04); es solo un último recurso.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = globalPermitLimit,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6,
+                QueueLimit = 0,
+            }));
 
     options.AddPolicy("login", context =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -167,7 +231,7 @@ builder.Services.AddRateLimiter(options =>
         {
             Status = StatusCodes.Status429TooManyRequests,
             Title = "Demasiadas solicitudes",
-            Detail = "Demasiados intentos de inicio de sesión desde esta IP. Espere unos minutos e intente nuevamente.",
+            Detail = "Demasiadas solicitudes desde esta IP. Espere unos minutos e intente nuevamente.",
         };
         pd.Extensions["code"] = "RATE_LIMITED";
         pd.Extensions["message"] = pd.Detail;
@@ -200,6 +264,27 @@ var app = builder.Build();
 
 app.UseForwardedHeaders();
 
+// ---------- Cabeceras de seguridad y NO-CACHE en TODAS las respuestas de la API (OWASP A05/A02) ----------
+// Nada de lo que devuelve la API (datos de personas, tokens, registros) debe quedar en cachés del navegador o de proxies.
+// Swagger (solo Development) necesita sus propios scripts, por eso se exceptúa de la CSP restrictiva.
+app.Use(async (context, next) =>
+{
+    var h = context.Response.Headers;
+    h["Cache-Control"] = "no-store, max-age=0";
+    h["Pragma"] = "no-cache";
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"] = "DENY";
+    h["Referrer-Policy"] = "no-referrer";
+    h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    h["Cross-Origin-Resource-Policy"] = "same-origin";
+    if (!context.Request.Path.StartsWithSegments("/swagger"))
+    {
+        h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
+    }
+
+    await next();
+});
+
 // ---------- Migraciones + seed al arranque (idempotente) ----------
 using (var scope = app.Services.CreateScope())
 {
@@ -209,6 +294,15 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseMiddleware<ErrorHandlingMiddleware>();
+
+// Registro de solicitudes (OWASP A09): método, ruta (sin query), estado, tiempo e IP; 401/403/429 se registran como Warning.
+app.UseSerilogRequestLogging(o =>
+{
+    o.GetLevel = (ctx, _, ex) => ex is not null || ctx.Response.StatusCode >= 500
+        ? LogEventLevel.Error
+        : ctx.Response.StatusCode is 401 or 403 or 429 ? LogEventLevel.Warning : LogEventLevel.Information;
+    o.EnrichDiagnosticContext = (diag, ctx) => diag.Set("RemoteIp", ctx.Connection.RemoteIpAddress?.ToString());
+});
 
 app.UseCors("frontend");
 

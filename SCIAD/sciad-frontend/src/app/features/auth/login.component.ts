@@ -8,7 +8,7 @@ import { Button } from '../../shared/ui/button.component';
 import { SciInput } from '../../shared/ui/field.component';
 import { ToastService } from '../../shared/ui/toast.service';
 import { homeFor } from '../../core/auth/paths';
-import { environment } from '../../../environments/environment';
+import { SHOW_DEMO_ACCOUNTS } from '../../../environments/environment';
 
 @Component({
   selector: 'app-login',
@@ -180,9 +180,10 @@ export class LoginComponent {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
 
-  protected readonly demoAccounts = DEMO_ACCOUNTS;
+  // Con SHOW_DEMO_ACCOUNTS=false (producción) esta rama se elimina en la compilación: DEMO_ACCOUNTS no llega al bundle.
+  protected readonly demoAccounts = SHOW_DEMO_ACCOUNTS ? DEMO_ACCOUNTS : [];
   /** Las cuentas demo (con su contraseña) solo se muestran en desarrollo; el build de producción las oculta. */
-  protected readonly showDemoAccounts = environment.showDemoAccounts;
+  protected readonly showDemoAccounts = SHOW_DEMO_ACCOUNTS;
   protected readonly loading = signal(false);
   protected readonly serverError = signal<string | null>(null);
 

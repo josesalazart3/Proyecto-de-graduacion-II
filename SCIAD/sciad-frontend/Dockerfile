@@ -19,6 +19,10 @@ RUN npm run build -- --configuration production
 # ---- Etapa 2: servidor web ----
 FROM nginx:1.27-alpine
 
+# Paquetes del sistema (Alpine) al día (OWASP A06): la imagen base nginx:1.27-alpine no siempre
+# trae los últimos parches de Alpine (openssl, libxml2, etc.); Trivy los detecta igual.
+RUN apk update && apk upgrade --no-cache
+
 # Configuración: SPA fallback + cabeceras
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 

@@ -12,6 +12,13 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Nonce de la CSP (lo inyecta nginx en <app-root ngCspNonce>); el gafete impreso lo necesita para su <style>. */
+function cspNonce(): string {
+  const el = document.querySelector('[ngcspnonce]');
+  const n = el?.getAttribute('ngcspnonce') ?? '';
+  return /^[A-Za-z0-9+/=_-]{8,}$/.test(n) ? n : '';
+}
+
 /** PNG (data URL) del QR. `size` es el ancho en píxeles; incluye zona de silencio blanca. */
 export async function qrDataUrl(value: string, size = 480): Promise<string> {
   const QRCode = (await import('qrcode')).default;
@@ -54,7 +61,7 @@ export interface DatosGafete {
 export async function imprimirGafete(d: DatosGafete): Promise<void> {
   const img = await qrDataUrl(d.token, 600);
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Gafete</title>
-<style>
+<style${cspNonce() ? ` nonce="${cspNonce()}"` : ''}>
   @page { size: auto; margin: 10mm; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #0f172a; }

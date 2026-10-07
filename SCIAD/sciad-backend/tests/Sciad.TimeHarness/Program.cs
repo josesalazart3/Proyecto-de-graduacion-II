@@ -183,6 +183,55 @@ public static class Harness
         inactivo.StartAsync(CancellationToken.None).Wait(); inactivo.StopAsync(CancellationToken.None).Wait();
         Check("con Habilitado=false no programa nada", llamadas == 2);
 
+        // ───────────────────────── Seguridad del login (OWASP A07) ─────────────────────────
+        Console.WriteLine("[7] Login: bloqueo por cuenta, sin enumeración y tiempo constante");
+        var pwdOk = "Correcta#2026-x";
+        var hashOk = BCrypt.Net.BCrypt.HashPassword(pwdOk, 10);
+        var rolAdmin = new Rol { Id = 1, Codigo = "ADMIN", Nombre = "Administrador" };
+        var uActivo = new Usuario { Id = 1, Nombre = "Admin", Correo = "admin@x.gt", Rol = rolAdmin, Puesto = "p", Estado = "activo", PasswordHash = hashOk };
+        var uInactivo = new Usuario { Id = 2, Nombre = "Baja", Correo = "baja@x.gt", Rol = rolAdmin, Puesto = "p", Estado = "inactivo", PasswordHash = hashOk };
+        var usuariosFake = Fake.Make<IUsuarioRepository>(new() { ["FindByCorreoAsync"] = a => (string)a[0]! switch { "admin@x.gt" => uActivo, "baja@x.gt" => uInactivo, _ => null } });
+        var tokenFake = Fake.Make<ITokenService>(new() { ["GenerarToken"] = a => "jwt-firma" });
+        var ahoraLogin = new DateTime(2026, 8, 21, 12, 0, 0, DateTimeKind.Utc);
+        var tracker = new LoginAttemptTracker(() => ahoraLogin);
+        var auth = new AuthService(usuariosFake, tokenFake, NullLogger<AuthService>.Instance, tracker);
+
+        Check("login correcto → token", auth.LoginAsync("admin@x.gt", pwdOk).Result is { Exitoso: true });
+        for (int i = 0; i < LoginAttemptTracker.MaxFallos - 1; i++) auth.LoginAsync("admin@x.gt", "mala" + i).Wait();
+        Check($"{LoginAttemptTracker.MaxFallos - 1} fallos: todavía NO bloqueada (el límite por IP, 5, es otro mecanismo)", !tracker.EstaBloqueado("admin@x.gt"));
+        auth.LoginAsync("admin@x.gt", "mala-final").Wait();
+        Check($"al fallo n.º {LoginAttemptTracker.MaxFallos} la cuenta queda bloqueada", tracker.EstaBloqueado("admin@x.gt"));
+        var bloqueada = auth.LoginAsync("admin@x.gt", pwdOk).Result;
+        Check("con la cuenta bloqueada, incluso la contraseña CORRECTA devuelve el mismo error genérico", !bloqueada.Exitoso && bloqueada.CodigoError == LoginResult.CredencialesInvalidas);
+        ahoraLogin = ahoraLogin + LoginAttemptTracker.Bloqueo + TimeSpan.FromSeconds(1);
+        Check("pasado el tiempo de bloqueo, la contraseña correcta vuelve a funcionar", auth.LoginAsync("admin@x.gt", pwdOk).Result.Exitoso);
+
+        var t2 = new LoginAttemptTracker(() => ahoraLogin); var auth2 = new AuthService(usuariosFake, tokenFake, NullLogger<AuthService>.Instance, t2);
+        for (int i = 0; i < 6; i++) auth2.LoginAsync("admin@x.gt", "mala").Wait();
+        auth2.LoginAsync("admin@x.gt", pwdOk).Wait();   // éxito: reinicia el contador
+        for (int i = 0; i < 6; i++) auth2.LoginAsync("admin@x.gt", "mala").Wait();
+        Check("un inicio de sesión correcto reinicia el contador de fallos (6+éxito+6 no bloquea)", !t2.EstaBloqueado("admin@x.gt"));
+
+        var t3 = new LoginAttemptTracker(() => ahoraLogin); var auth3 = new AuthService(usuariosFake, tokenFake, NullLogger<AuthService>.Instance, t3);
+        for (int i = 0; i < LoginAttemptTracker.MaxFallos; i++) auth3.LoginAsync("NoExiste@X.gt ", "x").Wait();
+        Check("un correo que NO existe se bloquea igual (el bloqueo no revela qué cuentas existen) y se normaliza", t3.EstaBloqueado("noexiste@x.gt"));
+        Check("la ventana de 15 min olvida fallos viejos", ((Func<bool>)(() => { var t4 = new LoginAttemptTracker(() => ahoraLogin); for (int i = 0; i < 9; i++) t4.RegistrarFallo("a@x.gt"); ahoraLogin += LoginAttemptTracker.Ventana + TimeSpan.FromSeconds(1); t4.RegistrarFallo("a@x.gt"); return !t4.EstaBloqueado("a@x.gt"); }))());
+        Check("usuario inactivo: sigue devolviendo UsuarioInactivo (comportamiento probado en AuthServiceTests)", auth3.LoginAsync("baja@x.gt", pwdOk).Result.CodigoError == LoginResult.UsuarioInactivo);
+
+        double Mediana(Func<object> f) { var t = new List<double>(); for (int i = 0; i < 5; i++) { var sw = System.Diagnostics.Stopwatch.StartNew(); f(); sw.Stop(); t.Add(sw.Elapsed.TotalMilliseconds); } t.Sort(); return t[2]; }
+        var authT = new AuthService(usuariosFake, tokenFake, NullLogger<AuthService>.Instance, new LoginAttemptTracker());
+        var tDesconocido = Mediana(() => authT.LoginAsync("fantasma@x.gt", "mala").Result);
+        var tContrasenaMala = Mediana(() => authT.LoginAsync("admin@x.gt", "mala").Result);
+        var tInactivo = Mediana(() => authT.LoginAsync("baja@x.gt", "mala").Result);
+        var razon = Math.Max(tDesconocido, tContrasenaMala) / Math.Max(0.001, Math.Min(tDesconocido, tContrasenaMala));
+        if (Math.Max(tDesconocido, tContrasenaMala) < 5) Console.WriteLine("  ℹ medición de tiempo omitida: no hay hashing BCrypt real en este entorno");
+        else Check("tiempo constante: correo desconocido vs contraseña incorrecta (misma verificación BCrypt)", razon < 3.0, $"desconocido={tDesconocido:F0} ms, mala={tContrasenaMala:F0} ms, inactivo={tInactivo:F0} ms, razón={razon:F2}");
+
+        Console.WriteLine("[8] Política de contraseña del administrador inicial");
+        foreach (var debil in new[] { "sciad123", "corta1A!", "todominusculas123!", "TODOMAYUSCULAS123!", "SinNumeros!!!!!!", "Password123!!!", "aaaaaaaaaaAA11!!" })
+            Check($"rechaza «{debil}»", !PoliticaContrasena.EsFuerte(debil, out _));
+        Check("acepta una contraseña fuerte", PoliticaContrasena.EsFuerte("T7#vQ9!mZp2$kL", out _));
+
         Console.WriteLine($"\nRESULTADO: {pass} ✓  {fail} ✗");
         return fail == 0 ? 0 : 1;
     }

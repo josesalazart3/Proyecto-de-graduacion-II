@@ -50,9 +50,7 @@ export class AuthService {
 
   logout(): void {
     this.session.set({ user: null, token: null });
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    this.clearStored();
   }
 
   /** Nombre del usuario actual para registrar acciones. */
@@ -64,17 +62,29 @@ export class AuthService {
     return this.session().user ?? null;
   }
 
+  // La sesión (JWT) vive en sessionStorage, NO en localStorage: se borra al cerrar la pestaña o la app instalada, no queda
+  // en disco entre sesiones del navegador y no se comparte entre pestañas. Recargar la página NO cierra la sesión.
+  // (Cualquier entrada antigua en localStorage se elimina.)
   private setSession(user: Usuario, token: string): void {
     this.session.set({ user, token });
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ user, token }));
+    }
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ user, token }));
+      localStorage.removeItem(STORAGE_KEY);
     }
   }
 
+  private clearStored(): void {
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(STORAGE_KEY);
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY);
+  }
+
   private readStored(): SessionState {
-    if (typeof localStorage === 'undefined') return { user: null, token: null };
+    if (typeof sessionStorage === 'undefined') return { user: null, token: null };
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY); // migración: no dejar tokens viejos en disco
+      const raw = sessionStorage.getItem(STORAGE_KEY);
       if (!raw) return { user: null, token: null };
       const parsed = JSON.parse(raw) as SessionState;
       return parsed.user ? parsed : { user: null, token: null };

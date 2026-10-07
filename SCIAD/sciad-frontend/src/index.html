@@ -16,6 +16,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 </head>
 <body>
-  <app-root></app-root>
+  <!-- nginx sustituye __CSP_NONCE__ por un valor aleatorio por petición (CSP estricta: style-src con nonce) -->
+  <app-root ngCspNonce="__CSP_NONCE__"></app-root>
 </body>
 </html>
