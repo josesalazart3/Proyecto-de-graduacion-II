@@ -4,12 +4,6 @@
 
 export type HallazgoEstado = 'abierto' | 'en_revision' | 'resuelto';
 
-export const HALLAZGO_ESTADO_LABELS: Record<string, string> = {
-  abierto: 'Abierto',
-  en_revision: 'En revisión',
-  resuelto: 'Resuelto',
-};
-
 export interface HallazgoAuditoria {
   id: string;
   tipo: string; // 'acceso_sin_egreso' | 'concentracion' | 'registro_duplicado' | ...

@@ -35,4 +35,3 @@ export const homeRedirectGuard: CanActivateFn = () => {
 export const adminGuard = roleGuard('ADMIN');
 export const securityGuard = roleGuard('SEGURIDAD');
 export const managementGuard = roleGuard('GERENCIA');
-export const adminOrManagementGuard = roleGuard('ADMIN', 'GERENCIA');

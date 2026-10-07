@@ -1,7 +1,4 @@
-// Configuración de entorno.
-//
-// Fase 1: apunta al interceptor mock (cualquier URL bajo /api/).
-// Fase 2: cambia apiUrl a la URL del backend real y quita el interceptor mock.
+// Configuración de entorno de DESARROLLO (`ng serve`). `apiUrl` apunta al backend real bajo /api/.
 
 // Constante SUELTA (no propiedad de objeto) para que el compilador la sustituya y elimine el código muerto:
 // con `false` las cuentas demo (con contraseña) NO viajan en el JavaScript del navegador.

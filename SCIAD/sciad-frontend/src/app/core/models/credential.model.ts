@@ -4,11 +4,6 @@
 
 export type CredencialEstado = 'activa' | 'revocada';
 
-export const CREDENCIAL_ESTADO_LABELS: Record<string, string> = {
-  activa: 'Activa',
-  revocada: 'Revocada',
-};
-
 export interface Credencial {
   id: string;
   personaId: string;

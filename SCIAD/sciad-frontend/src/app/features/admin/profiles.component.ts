@@ -1,5 +1,5 @@
 // Perfiles de acceso (CU-03): Fase 3 los reconcilia a la semántica del backend =
-// ASIGNACIÓN persona + zona + vigencia (decisión de usuario, ver INTEGRACION_FASE3_PLAN.md D6).
+// ASIGNACIÓN persona + zona + vigencia (decisión de usuario).
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ProfilesService, ZonasService, PersonasService } from '../../core/services/crud.service';

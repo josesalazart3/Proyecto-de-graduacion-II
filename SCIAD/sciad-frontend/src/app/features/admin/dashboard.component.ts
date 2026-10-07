@@ -1,5 +1,5 @@
 // Panel de control: Fase 3 lo reconcilia al backend real. Los KPI se componen en el cliente
-// (decisión aprobada en INTEGRACION_FASE3_PLAN.md §5.3): históricos de hoy, personas activas,
+// (decisión aprobada en su momento): históricos de hoy, personas activas,
 // notificaciones no leídas y credenciales emitidas. No existe endpoint "dashboard" en el backend.
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';

@@ -22,14 +22,14 @@ Docker Compose). Cada uno produce un archivo de evidencia en `sciad-backend/evid
 | Inspección de código | `FromSqlRaw`, entropía token, `usuarioEstado` | 0 SQL crudo; 256 bits; bcrypt cost 10 | — |
 | Consulta PostgreSQL directa | `password_hash` | **11/11 con cost 10, 0 en texto plano** | §8 (SEC-08) |
 
-Adicionalmente se usan las bitácoras de construcción de las fases anteriores como evidencia de los flujos E2E
-completos (`BACKEND_2A` a `BACKEND_2D`, `INTEGRACION_FASE3_PLAN.md`) — estas fases ya verificaron CRUD, escaneo,
-auditoría, reportes y la integración Frontend↔Backend contra el backend real.
+Adicionalmente se usan las bitácoras de construcción de las fases anteriores (Fases 2 y 3) como evidencia de los
+flujos E2E completos — estas fases ya verificaron CRUD, escaneo, auditoría, reportes y la integración
+Frontend↔Backend contra el backend real.
 
 ### Estado de cobertura automatizada (DERCAS §9.1)
 
 **Adenda Fase 4 — cubierta.** El backend ya cuenta con el proyecto de pruebas unitarias `Sciad.Tests`
-(xUnit + Moq + coverlet, documentado en `BACKEND_4_SEGURIDAD_PLAN.md`). Resultados reales de la corrida final
+(xUnit + Moq + coverlet). Resultados reales de la corrida final
 (**162 pruebas · 162 passed / 0 failed / 0 skipped**):
 
 | Capa | Líneas cubiertas | Cobertura |
@@ -148,5 +148,5 @@ Los entregables de despliegue (CA-11/TLS, backups, políticas de reinicio) está
   programado (+ `pgBackRest` alternativo), migraciones seguras y estrategia de backups.
 
 ---
-*Documento generado como parte de la Fase 4 del plan `BACKEND_4_SEGURIDAD_PLAN.md`. Todo número citado proviene de
+*Documento generado como parte de la Fase 4 (seguridad). Todo número citado proviene de
 una corrida real automatizada identificada por script y fecha.*
