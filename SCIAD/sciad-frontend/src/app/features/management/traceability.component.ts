@@ -2,8 +2,8 @@
 // con filtros de servidor (personaId, zonaId, desde, hasta, tipo). Tipo real: ingreso/egreso.
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { AccessLogService, PersonasService, ZonasService } from '../../core/services/crud.service';
+import { AuthService } from '../../core/services/auth.service';
 import { RegistroHistorial } from '../../core/models/access-log.model';
-import { Persona } from '../../core/models/persona.model';
 import { Zona } from '../../core/models/access.model';
 import { Card } from '../../shared/ui/card.component';
 import { Button } from '../../shared/ui/button.component';
@@ -101,16 +101,21 @@ function badgeTipo(tipo: string): StatusKey {
 export class TraceabilityComponent implements OnInit {
   private readonly service = inject(AccessLogService);
   private readonly personasSvc = inject(PersonasService);
+  private readonly auth = inject(AuthService);
   private readonly zonasSvc = inject(ZonasService);
 
   protected readonly badgeTipo = badgeTipo;
 
-  // fecha/hora vienen en UTC del servidor: se muestran en hora local del dispositivo.
+  // fecha/hora vienen en hora de Guatemala (Fase 4): se muestran en la hora del dispositivo.
   protected fechaDe(r: RegistroHistorial): string { return fechaLocal(r.fecha, r.hora); }
   protected horaDe(r: RegistroHistorial): string { return horaLocal(r.fecha, r.hora); }
   protected readonly loading = signal(true);
   protected readonly rows = signal<RegistroHistorial[]>([]);
-  protected readonly personas = signal<Persona[]>([]);
+  // Opciones del filtro "persona": el Administrador usa el listado completo del backend; Gerencia/Auditoría (que no tiene
+  // permiso sobre /api/personas) usa las personas que aparecen en los registros ya cargados.
+  private readonly personasApi = signal<{ id: string; nombre: string }[]>([]);
+  private readonly personasVistas = signal<{ id: string; nombre: string }[]>([]);
+  protected readonly personas = computed(() => (this.personasApi().length ? this.personasApi() : this.personasVistas()));
   protected readonly zonas = signal<Zona[]>([]);
   protected readonly personaId = signal('');
   protected readonly zonaId = signal('');
@@ -122,7 +127,14 @@ export class TraceabilityComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
-    this.personasSvc.list().subscribe((ps) => this.personas.set(ps));
+    // GET /api/personas es solo del Administrador (RequireAdmin, PG2 §4.3.2). Gerencia/Auditoría no lo pide: su filtro
+    // de personas se arma con los registros que ya consulta (historial).
+    if (this.auth.role() === 'ADMIN') {
+      this.personasSvc.list().subscribe({
+        next: (ps) => this.personasApi.set(ps.map((p) => ({ id: String(p.id), nombre: p.nombre }))),
+        error: () => undefined,
+      });
+    }
     this.zonasSvc.list().subscribe((zs) => this.zonas.set(zs));
   }
 
@@ -138,10 +150,20 @@ export class TraceabilityComponent implements OnInit {
       .subscribe({
         next: (list) => {
           this.rows.set(list);
+          this.recordarPersonas(list);
           this.loading.set(false);
         },
         error: () => this.loading.set(false),
       });
+  }
+
+  /** Acumula (sin repetir) las personas vistas en los registros para poblar el filtro. */
+  private recordarPersonas(list: RegistroHistorial[]): void {
+    const actuales = new Map(this.personasVistas().map((p) => [p.id, p.nombre]));
+    for (const r of list) actuales.set(String(r.personaId), r.personaNombre);
+    if (actuales.size !== this.personasVistas().length) {
+      this.personasVistas.set([...actuales].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+    }
   }
 
   protected onPersona(e: Event): void {

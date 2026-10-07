@@ -33,8 +33,8 @@ public static class TestData
             Id = id,
             PersonaId = personaId,
             ZonaId = zonaId,
-            VigenciaInicio = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
-            VigenciaFin = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(+30)),
+            VigenciaInicio = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(-30)),
+            VigenciaFin = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(+30)),
         };
 
     public static PerfilAcceso PerfilVencido(int id = 1, int personaId = 1, int zonaId = 1) =>
@@ -43,8 +43,8 @@ public static class TestData
             Id = id,
             PersonaId = personaId,
             ZonaId = zonaId,
-            VigenciaInicio = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-60)),
-            VigenciaFin = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1)),
+            VigenciaInicio = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(-60)),
+            VigenciaFin = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(-1)),
         };
 
     public static PerfilAcceso PerfilFuturo(int id = 1, int personaId = 1, int zonaId = 1) =>
@@ -53,8 +53,8 @@ public static class TestData
             Id = id,
             PersonaId = personaId,
             ZonaId = zonaId,
-            VigenciaInicio = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(+10)),
-            VigenciaFin = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(+40)),
+            VigenciaInicio = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(+10)),
+            VigenciaFin = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(+40)),
         };
 
     // ---------------- Credencial ----------------
@@ -65,7 +65,7 @@ public static class TestData
         Persona = persona ?? PersonaActiva(personaId),
         Token = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
         Estado = "activa",
-        Emitido = DateOnly.FromDateTime(DateTime.UtcNow),
+        Emitido = DateOnly.FromDateTime(GuatemalaTime.Now),
     };
 
     public static CredencialQr CredencialEnEstado(string estado, int id = 1, int personaId = 1, Persona? persona = null) =>
@@ -76,7 +76,7 @@ public static class TestData
             Persona = persona ?? PersonaActiva(personaId),
             Token = $"token-{estado}-{id}".PadRight(64, '0'),
             Estado = estado,
-            Emitido = DateOnly.FromDateTime(DateTime.UtcNow),
+            Emitido = DateOnly.FromDateTime(GuatemalaTime.Now),
         };
 
     // ---------------- Usuario / rol ----------------
@@ -114,8 +114,8 @@ public static class TestData
             Persona = persona ?? PersonaActiva(personaId),
             ZonaId = zonaId,
             Zona = zona ?? ZonaActiva(zonaId),
-            Fecha = fecha ?? DateOnly.FromDateTime(DateTime.UtcNow),
-            Hora = hora ?? TimeOnly.FromDateTime(DateTime.UtcNow),
+            Fecha = fecha ?? DateOnly.FromDateTime(GuatemalaTime.Now),
+            Hora = hora ?? TimeOnly.FromDateTime(GuatemalaTime.Now),
             Tipo = tipo,
             UsuarioId = 1,
         };

@@ -8,6 +8,7 @@ import { Button } from '../../shared/ui/button.component';
 import { SciInput } from '../../shared/ui/field.component';
 import { ToastService } from '../../shared/ui/toast.service';
 import { homeFor } from '../../core/auth/paths';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-login',
@@ -50,17 +51,19 @@ import { homeFor } from '../../core/auth/paths';
           </button>
         </form>
 
-        <div class="demo">
-          <div class="demo-label uppercase-label">Cuentas de demostración</div>
-          <div class="demo-grid">
-            @for (acc of demoAccounts; track acc.email) {
-              <button type="button" class="demo-chip" (click)="fill(acc.email, acc.password)">
-                <span class="dot" [class]="'d-' + acc.rol.toLowerCase()"></span>
-                <span>{{ acc.label }}</span>
-              </button>
-            }
+        @if (showDemoAccounts) {
+          <div class="demo">
+            <div class="demo-label uppercase-label">Cuentas de demostración</div>
+            <div class="demo-grid">
+              @for (acc of demoAccounts; track acc.email) {
+                <button type="button" class="demo-chip" (click)="fill(acc.email, acc.password)">
+                  <span class="dot" [class]="'d-' + acc.rol.toLowerCase()"></span>
+                  <span>{{ acc.label }}</span>
+                </button>
+              }
+            </div>
           </div>
-        </div>
+        }
       </div>
     </div>
   `,
@@ -178,6 +181,8 @@ export class LoginComponent {
   private readonly toast = inject(ToastService);
 
   protected readonly demoAccounts = DEMO_ACCOUNTS;
+  /** Las cuentas demo (con su contraseña) solo se muestran en desarrollo; el build de producción las oculta. */
+  protected readonly showDemoAccounts = environment.showDemoAccounts;
   protected readonly loading = signal(false);
   protected readonly serverError = signal<string | null>(null);
 

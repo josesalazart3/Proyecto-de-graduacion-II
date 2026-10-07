@@ -2,6 +2,8 @@
 process.env.TZ = 'America/Guatemala';
 import puppeteer from 'puppeteer-core';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync } from 'node:fs';
+mkdirSync(new URL('./out/', import.meta.url), { recursive: true }); // capturas de pantalla
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { createServer } from './mock-server.mjs';
@@ -166,8 +168,9 @@ console.log('\n[3] Administrador en escritorio: QR real + gafete + escáner');
   // pantallas con hora: muestran hora local
   await page.goto(`${BASE}/admin/accesos`, { waitUntil: 'networkidle0' });
   const h = await page.$$eval('.row-right .mono', (n) => n.map((x) => x.textContent.trim()).filter((t) => /\d\d:\d\d/.test(t)));
-  const utcH = movs.at(-1)?.hora.slice(0, 5);
-  check('"Accesos de hoy" muestra hora local (≠ UTC)', h.length > 0 && h[0] !== utcH, `mostrada=${h[0]} utc=${utcH}`);
+  const gtH = movs.at(-1)?.hora.slice(0, 5);                 // lo que guarda el backend (hora de Guatemala)
+  const utcH = new Date().toISOString().slice(11, 16);        // hora UTC actual
+  check('"Accesos de hoy" muestra la hora de Guatemala guardada (≠ UTC)', h.length > 0 && h[0] === gtH && h[0] !== utcH, `mostrada=${h[0]} guardada=${gtH} utc=${utcH}`);
   await page.close();
 }
 

@@ -265,7 +265,7 @@ public sealed class RegistrosAccesoServiceTests
     public async Task Registrar_Exito_PersisteRegistroConCamposCorrectos_Y_DevuelveDto()
     {
         var (resultado, registro) = await EjecutarAccesoExitoso(0, 0);
-        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+        var hoy = DateOnly.FromDateTime(GuatemalaTime.Now);
 
         Assert.True(resultado.Exitoso);
         Assert.NotNull(registro);
@@ -290,7 +290,7 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task ListarDelDia_AgrupaPorPersonaYZona_Y_InfiereDentro()
     {
-        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+        var hoy = DateOnly.FromDateTime(GuatemalaTime.Now);
         var persona1 = TestData.PersonaActiva(1, "Ana López");
         var persona2 = TestData.PersonaActiva(2, "Bruno Ruiz");
         var zona1 = TestData.ZonaActiva(1, "Oficinas");
@@ -330,7 +330,7 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task ListarDelDia_PropagaElFiltroDeZona()
     {
-        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+        var hoy = DateOnly.FromDateTime(GuatemalaTime.Now);
         _registros.Setup(m => m.ListarDelDiaAsync(It.IsAny<int?>(), hoy, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RegistroAcceso>());
 
@@ -370,7 +370,7 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task Historial_DesdePosteriorAHasta_DevuelveValidacion()
     {
-        var desde = DateOnly.FromDateTime(DateTime.UtcNow);
+        var desde = DateOnly.FromDateTime(GuatemalaTime.Now);
         var resultado = await Servicio().ListarHistorialAsync(
             new HistorialAccesosRequest(null, null, desde, desde.AddDays(-1), null, 1, 20));
 

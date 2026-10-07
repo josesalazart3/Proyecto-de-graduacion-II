@@ -40,6 +40,8 @@ services:
       - ConnectionStrings__Postgres=Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Maximum Pool Size=${POSTGRES_MAX_POOL:-400}
       - Jwt__Secreto=${SCIAD_JWT_SECRET}
       - Cors__Origins=${SCIAD_CORS_ORIGINS}
+      # Hora (Guatemala) del cierre diario de auditoría. Por defecto 00:05; se cambia solo para probarlo (verify-cierre.mjs).
+      - Auditoria__CierreDiario__Hora=${AUDITORIA_CIERRE_HORA:-00:05}
     depends_on:
       db:
         condition: service_healthy

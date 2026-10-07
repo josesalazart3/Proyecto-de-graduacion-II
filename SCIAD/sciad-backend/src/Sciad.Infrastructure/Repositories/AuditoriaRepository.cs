@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Sciad.Application.Interfaces;
+using Sciad.Application.Services;
 using Sciad.Domain.Entities;
 using Sciad.Infrastructure.Persistence;
 
@@ -38,9 +39,27 @@ public sealed class AuditoriaRepository : IAuditoriaRepository
 
     public async Task<List<Auditoria>> AgregarHallazgosAsync(List<Auditoria> hallazgos, CancellationToken ct = default)
     {
-        _db.Auditorias.AddRange(hallazgos);
+        // Descarta los que ya existen (la verificación corre también cada noche y revisa todos los días anteriores).
+        var descripciones = hallazgos
+            .Where(h => HallazgosUnicos.EsDeduplicable(h.Tipo))
+            .Select(h => h.Descripcion)
+            .Distinct()
+            .ToList();
+
+        var existentes = new List<(string Tipo, int? PersonaId, string Descripcion)>();
+        if (descripciones.Count > 0)
+        {
+            var filas = await _db.Auditorias.AsNoTracking()
+                .Where(a => descripciones.Contains(a.Descripcion))
+                .Select(a => new { a.Tipo, a.PersonaId, a.Descripcion })
+                .ToListAsync(ct);
+            existentes.AddRange(filas.Select(f => (f.Tipo, f.PersonaId, f.Descripcion)));
+        }
+
+        var nuevos = HallazgosUnicos.Filtrar(hallazgos, existentes);
+        _db.Auditorias.AddRange(nuevos);
         await _db.SaveChangesAsync(ct);
-        return hallazgos;
+        return nuevos;
     }
 
     public async Task<Auditoria> ActualizarAsync(Auditoria hallazgo, CancellationToken ct = default)

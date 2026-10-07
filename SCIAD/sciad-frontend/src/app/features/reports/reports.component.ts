@@ -4,6 +4,7 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ReportsService, PersonasService, ZonasService } from '../../core/services/crud.service';
+import { AuthService } from '../../core/services/auth.service';
 import { Reporte } from '../../core/models/reporte.model';
 import { Persona } from '../../core/models/persona.model';
 import { Zona } from '../../core/models/access.model';
@@ -105,6 +106,7 @@ import { ToastService } from '../../shared/ui/toast.service';
 export class ReportsComponent implements OnInit {
   private readonly service = inject(ReportsService);
   private readonly personasSvc = inject(PersonasService);
+  private readonly auth = inject(AuthService);
   private readonly zonasSvc = inject(ZonasService);
   private readonly fb = inject(FormBuilder);
   private readonly toast = inject(ToastService);
@@ -148,7 +150,10 @@ export class ReportsComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
-    this.personasSvc.list().subscribe((ps) => this.personas.set(ps));
+    // Solo el Administrador tiene permiso sobre /api/personas (PG2 §4.3.2); para Gerencia el filtro de persona queda en "Todas".
+    if (this.auth.role() === 'ADMIN') {
+      this.personasSvc.list().subscribe({ next: (ps) => this.personas.set(ps), error: () => undefined });
+    }
     this.zonasSvc.list().subscribe((zs) => this.zonas.set(zs));
   }
 

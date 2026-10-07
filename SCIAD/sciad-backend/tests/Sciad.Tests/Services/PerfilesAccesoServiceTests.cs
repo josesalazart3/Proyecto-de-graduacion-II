@@ -49,8 +49,8 @@ public sealed class PerfilesAccesoServiceTests
         {
             PersonaId = 1,
             ZonaId = 1,
-            VigenciaInicio = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(+10)),
-            VigenciaFin = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(+5)),
+            VigenciaInicio = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(+10)),
+            VigenciaFin = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(+5)),
         };
 
         var resultado = await Servicio().CrearAsync(req);
@@ -114,8 +114,8 @@ public sealed class PerfilesAccesoServiceTests
     {
         _personas.Setup(m => m.FindByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(TestData.PersonaActiva(9, "Ana López"));
         _zonas.Setup(m => m.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(TestData.ZonaActiva(7, "Oficinas"));
-        var inicio = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-        var fin = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(+20));
+        var inicio = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(-1));
+        var fin = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(+20));
         _perfiles.Setup(m => m.AgregarAsync(It.IsAny<PerfilAcceso>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((PerfilAcceso p, CancellationToken _) => { p.Id = 4; p.Persona = TestData.PersonaActiva(9, "Ana López"); p.Zona = TestData.ZonaActiva(7, "Oficinas"); return p; });
 
@@ -167,8 +167,8 @@ public sealed class PerfilesAccesoServiceTests
     {
         PersonaId = personaId,
         ZonaId = zonaId,
-        VigenciaInicio = DateOnly.FromDateTime(DateTime.UtcNow),
-        VigenciaFin = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(dias)),
+        VigenciaInicio = DateOnly.FromDateTime(GuatemalaTime.Now),
+        VigenciaFin = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(dias)),
     };
 
     private static PerfilAcceso PerfilAccesoConNavegacion() => new()
@@ -178,7 +178,7 @@ public sealed class PerfilesAccesoServiceTests
         Persona = TestData.PersonaActiva(2),
         ZonaId = 3,
         Zona = TestData.ZonaActiva(3, "Oficinas"),
-        VigenciaInicio = DateOnly.FromDateTime(DateTime.UtcNow),
-        VigenciaFin = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+        VigenciaInicio = DateOnly.FromDateTime(GuatemalaTime.Now),
+        VigenciaFin = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(30)),
     };
 }

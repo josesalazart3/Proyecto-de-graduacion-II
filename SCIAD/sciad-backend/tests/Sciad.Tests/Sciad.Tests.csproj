@@ -24,6 +24,8 @@
        para que los atributos [Fact]/[Theory] resuelvan sin usar por archivo. -->
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- Fase 4: los tests construyen "hoy" con la hora de Guatemala, igual que los servicios. -->
+    <Using Include="Sciad.Domain.Time" />
   </ItemGroup>
 
   <ItemGroup>

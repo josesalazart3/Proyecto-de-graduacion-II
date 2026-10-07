@@ -6,4 +6,6 @@
 export const environment = {
   production: false,
   apiUrl: '/api',
+  // Muestra en el login las cuentas demo (con contraseña). Solo desarrollo (`ng serve`).
+  showDemoAccounts: true,
 };

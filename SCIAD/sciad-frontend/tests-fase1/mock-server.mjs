@@ -71,7 +71,8 @@ export function createServer() {
         const tipo = ing > egr ? 'egreso' : 'ingreso';
         if (tipo === 'ingreso' && ing > 0) return fail(409, 'CONFLICT', 'Ya existe un ingreso registrado para esta persona hoy (doble ingreso).');
         const now = new Date();
-        const m = { personaId: '7', zonaId: String(zonaId), tipo, fecha: now.toISOString().slice(0, 10), hora: now.toISOString().slice(11, 19) };
+        const gt = new Date(now.getTime() - 6 * 3600e3); // el backend guarda la hora de Guatemala (UTC-6), Fase 4
+        const m = { personaId: '7', zonaId: String(zonaId), tipo, fecha: gt.toISOString().slice(0, 10), hora: gt.toISOString().slice(11, 19) };
         movs.push(m); entry.status = 200; entry.tipo = tipo;
         return json(res, { id: String(movs.length), personaId: 7, personaNombre: persona.nombre, zonaId: +zonaId, zonaNombre: zonas[+zonaId - 1].nombre, tipo, fecha: m.fecha, hora: m.hora, estado: 'autorizado', timestamp: now.toISOString() });
       }

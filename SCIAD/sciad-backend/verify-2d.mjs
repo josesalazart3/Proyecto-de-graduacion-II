@@ -13,8 +13,9 @@ const PG = { ...process.env, PGPASSWORD: 'sciad_local_dev_2026' };
 const PSQL = (sql) => execSync(`docker exec sciad-db psql -U sciad -d sciad -v ON_ERROR_STOP=1 -c "${sql}"`, { env: PG, encoding: 'utf8' });
 
 const R = Date.now().toString().slice(-8);
-const hoy = new Date().toISOString().slice(0, 10);
-const ayer = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+// "hoy" = día de Guatemala (UTC-6): el backend guarda y filtra por hora de Guatemala (Fase 4)
+const hoy = new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10);
+const ayer = new Date(Date.now() - 6 * 3600e3 - 86400000).toISOString().slice(0, 10);
 const horaAhora = new Date().toISOString().slice(11, 19);
 const fecha = (ms) => new Date(ms).toISOString().slice(0, 10);
 const iniVig = fecha(Date.now() - 1 * 86400000);

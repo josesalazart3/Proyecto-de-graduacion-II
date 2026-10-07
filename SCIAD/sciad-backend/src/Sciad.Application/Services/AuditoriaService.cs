@@ -3,6 +3,7 @@ using Sciad.Application.Dtos.Auditoria;
 using Sciad.Application.Dtos.Common;
 using Sciad.Application.Interfaces;
 using Sciad.Domain.Entities;
+using Sciad.Domain.Time;
 
 namespace Sciad.Application.Services;
 
@@ -50,7 +51,7 @@ public sealed class AuditoriaService : IAuditoriaService
     public async Task<ServicioResultado<VerificacionAuditoriaResultadoDto>> VerificarAsync(
         CancellationToken ct = default)
     {
-        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+        var hoy = GuatemalaTime.Hoy;
         var hallazgos = new List<Auditoria>();
         var notificacionesGeneradas = 0;
 
@@ -79,7 +80,7 @@ public sealed class AuditoriaService : IAuditoriaService
         }
 
         // 4) Concentración inusual en una zona: N ingresos en la ventana rodante, agrupados por zona.
-        var ahora = DateTime.UtcNow;
+        var ahora = GuatemalaTime.UtcNow;
         var desdeVentana = ahora.AddMinutes(-VentanaConcentracionMinutos);
         foreach (var grupo in (await _registros.ListarIngresosDelDiaAsync(hoy, ct)).GroupBy(r => r.ZonaId))
         {
@@ -171,10 +172,9 @@ public sealed class AuditoriaService : IAuditoriaService
 
     private static bool DentroDeVentana(RegistroAcceso r, DateTime desde, DateTime hasta)
     {
-        // Fecha+Hora se persisten en UTC (2C usa DateTime.UtcNow): se reconstruye el timestamp UTC.
-        var momento = new DateTime(
-            r.Fecha.Year, r.Fecha.Month, r.Fecha.Day,
-            r.Hora.Hour, r.Hora.Minute, r.Hora.Second, DateTimeKind.Utc);
+        // Fecha+Hora se persisten en hora de Guatemala (UTC-6): se reconstruye el instante UTC equivalente
+        // para compararlo con la ventana (que está en UTC).
+        var momento = GuatemalaTime.ToUtc(r.Fecha, r.Hora);
         return momento >= desde && momento <= hasta;
     }
 }

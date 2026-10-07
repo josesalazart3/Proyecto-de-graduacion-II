@@ -1,7 +1,7 @@
 process.env.TZ = 'America/Guatemala'; // portable (Windows/Linux/macOS); debe fijarse antes de usar Date
 import assert from 'node:assert/strict';
 import { extractToken, ScanGate, TOKEN_RE } from '../src/app/core/util/token.ts';
-import { horaLocal, fechaLocal, hoyUtc } from '../src/app/core/util/time.ts';
+import { horaLocal, fechaLocal, hoyServidor } from '../src/app/core/util/time.ts';
 
 let n = 0; const ok = (name, fn) => { fn(); n++; console.log('  ✓', name); };
 const T = 'A'.repeat(32) + '0123456789abcdef'.repeat(2);   // 64 hex
@@ -27,12 +27,12 @@ ok('mismo token bloqueado hasta sameTokenMs', () => { assert.equal(g.canProcess(
 ok('mismo token permitido pasado sameTokenMs', () => assert.equal(g.canProcess(T, 15001), true));
 ok('forget() permite reintento inmediato (fallo de red)', () => { g.forget(); assert.equal(g.canProcess(T, 3000), true); });
 
-console.log('time.ts (backend guarda UTC; Guatemala = UTC-6)');
-const tz = process.env.TZ;
+console.log('time.ts (el backend guarda hora de Guatemala = UTC-6; Fase 4)');
 ok('TZ del proceso = America/Guatemala', () => assert.equal(Intl.DateTimeFormat().resolvedOptions().timeZone, 'America/Guatemala'));
-ok('13:15:32Z → 07:15 local', () => assert.equal(horaLocal('2026-08-21', '13:15:32'), '07:15'));
-ok('acepta fracciones de segundo del servidor', () => assert.equal(horaLocal('2026-08-21', '13:15:32.1234567'), '07:15'));
-ok('00:30Z del día siguiente → 18:30 del día anterior (cruce de día)', () => { assert.equal(horaLocal('2026-08-22', '00:30:00'), '18:30'); assert.equal(fechaLocal('2026-08-22', '00:30:00'), '2026-08-21'); });
+ok('07:15:32 (GT) se muestra 07:15', () => assert.equal(horaLocal('2026-08-21', '07:15:32'), '07:15'));
+ok('acepta fracciones de segundo del servidor', () => assert.equal(horaLocal('2026-08-21', '07:15:32.1234567'), '07:15'));
+ok('18:30 (GT) sigue siendo el mismo día (el error de las 6 pm)', () => { assert.equal(horaLocal('2026-08-21', '18:30:00'), '18:30'); assert.equal(fechaLocal('2026-08-21', '18:30:00'), '2026-08-21'); });
 ok('entradas inválidas no rompen (fallback)', () => { assert.equal(horaLocal(null, '13:15:32'), '13:15'); assert.equal(horaLocal('x', 'y'), 'y'.slice(0,5)); });
-ok('hoyUtc formato yyyy-mm-dd', () => assert.match(hoyUtc(), /^\d{4}-\d{2}-\d{2}$/));
+ok('hoyServidor: 05:59Z = día 21; 06:00Z = día 22 (medianoche de Guatemala)', () => { assert.equal(hoyServidor(new Date('2026-08-22T05:59:59Z')), '2026-08-21'); assert.equal(hoyServidor(new Date('2026-08-22T06:00:00Z')), '2026-08-22'); });
+ok('hoyServidor: 00:30Z del 22 sigue siendo el día 21 (18:30 en Guatemala)', () => assert.equal(hoyServidor(new Date('2026-08-22T00:30:00Z')), '2026-08-21'));
 console.log(`\n${n} pruebas OK`);

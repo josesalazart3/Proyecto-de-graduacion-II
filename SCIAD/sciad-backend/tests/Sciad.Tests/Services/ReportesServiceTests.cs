@@ -26,8 +26,8 @@ public sealed class ReportesServiceTests
     {
         var req = new GenerarReporteRequest
         {
-            Desde = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(+5)),
-            Hasta = DateOnly.FromDateTime(DateTime.UtcNow),
+            Desde = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(+5)),
+            Hasta = DateOnly.FromDateTime(GuatemalaTime.Now),
         };
 
         var resultado = await Servicio().GenerarAsync(req, usuarioId: 1);
@@ -44,8 +44,8 @@ public sealed class ReportesServiceTests
     {
         var req = new GenerarReporteRequest
         {
-            Desde = DateOnly.FromDateTime(DateTime.UtcNow),
-            Hasta = DateOnly.FromDateTime(DateTime.UtcNow),
+            Desde = DateOnly.FromDateTime(GuatemalaTime.Now),
+            Hasta = DateOnly.FromDateTime(GuatemalaTime.Now),
             TipoEvento = tipo,
         };
 
@@ -60,8 +60,8 @@ public sealed class ReportesServiceTests
     {
         var req = new GenerarReporteRequest
         {
-            Desde = DateOnly.FromDateTime(DateTime.UtcNow),
-            Hasta = DateOnly.FromDateTime(DateTime.UtcNow),
+            Desde = DateOnly.FromDateTime(GuatemalaTime.Now),
+            Hasta = DateOnly.FromDateTime(GuatemalaTime.Now),
             TipoEvento = "  INGRESO  ",
         };
         // El servicio valida el tipo normalizado pero pasa el valor crudo al repositorio.

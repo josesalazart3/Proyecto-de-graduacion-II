@@ -10,3 +10,7 @@ sciad-backend/obj/
 sciad-backend/tests/**/bin/
 sciad-backend/tests/**/obj/
 sciad-backend/tests/TestResults/
+
+# Salida del script de datos demo (contiene tokens QR)
+demo-credenciales.json
+demo-gafetes.html

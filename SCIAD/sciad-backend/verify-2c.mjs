@@ -8,7 +8,7 @@ const BASE = process.env.SCIAD_BASE ?? 'http://localhost:3000';
 const H = { 'Content-Type': 'application/json' };
 
 const R = Date.now().toString().slice(-8); // sufijo único por corrida
-const hoyUtc = new Date().toISOString().slice(0, 10);
+const hoyUtc = new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10); // día de Guatemala (UTC-6): el backend lo usa como "hoy" (Fase 4)
 const fecha = (ms) => new Date(ms).toISOString().slice(0, 10);
 const inicioVigencia = fecha(Date.now() - 1 * 86400000);
 const finVigencia = fecha(Date.now() + 30 * 86400000);

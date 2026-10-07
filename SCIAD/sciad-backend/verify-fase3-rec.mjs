@@ -23,7 +23,7 @@ const R = Date.now().toString().slice(-8);
 const fecha = (ms) => new Date(ms).toISOString().slice(0, 10);
 const iniVig = fecha(Date.now() - 1 * 86400000);
 const finVig = fecha(Date.now() + 30 * 86400000);
-const hoy = new Date().toISOString().slice(0, 10);
+const hoy = new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10); // día de Guatemala (UTC-6), Fase 4
 
 let pass = 0, fail = 0, hallazgos = [];
 function check(name, cond, extra = '') {

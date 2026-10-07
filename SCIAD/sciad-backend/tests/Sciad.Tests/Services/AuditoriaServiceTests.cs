@@ -30,7 +30,7 @@ public sealed class AuditoriaServiceTests
     public async Task Verificar_IngresoSinEgresoDeDiasAnteriores_CreaHallazgo()
     {
         // Ingreso de hace 2 días sin egreso correspondiente (el de hoy NO es anomalía).
-        var anteayer = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2));
+        var anteayer = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(-2));
         _registros.Setup(m => m.IngresosSinEgresoAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RegistroAcceso>
             {
@@ -241,7 +241,7 @@ public sealed class AuditoriaServiceTests
     [Fact]
     public async Task Verificar_Mixto_ResumenPorTipoCorrecto()
     {
-        var anteayer = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2));
+        var anteayer = DateOnly.FromDateTime(GuatemalaTime.Now.AddDays(-2));
         var referencia = ConstruirReferencia();
 
         _registros.Setup(m => m.IngresosSinEgresoAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -278,7 +278,7 @@ public sealed class AuditoriaServiceTests
     {
         var hallazgos = new List<Auditoria>
         {
-            new() { Id = 1, Tipo = "acceso_sin_egreso", Descripcion = "d", Estado = "abierto", Fecha = DateOnly.FromDateTime(DateTime.UtcNow) },
+            new() { Id = 1, Tipo = "acceso_sin_egreso", Descripcion = "d", Estado = "abierto", Fecha = DateOnly.FromDateTime(GuatemalaTime.Now) },
         };
         _auditoria.Setup(m => m.ListarAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((hallazgos, 11));
@@ -352,7 +352,7 @@ public sealed class AuditoriaServiceTests
     /// </summary>
     private static VentanaReferencia ConstruirReferencia()
     {
-        var ahora = DateTime.UtcNow;
+        var ahora = GuatemalaTime.Now;
         return new VentanaReferencia(
             (DateOnly.FromDateTime(ahora), TimeOnly.FromDateTime(ahora)),
             (DateOnly.FromDateTime(ahora.AddMinutes(-45)), TimeOnly.FromDateTime(ahora.AddMinutes(-45))));
@@ -369,7 +369,7 @@ public sealed class AuditoriaServiceTests
         Descripcion = "d",
         PersonaId = 7,
         Estado = "abierto",
-        Fecha = DateOnly.FromDateTime(DateTime.UtcNow),
+        Fecha = DateOnly.FromDateTime(GuatemalaTime.Now),
     };
 
     private static CambiarEstadoRequest Solicitud(string estado) => new() { Estado = estado };

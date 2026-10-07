@@ -3,6 +3,7 @@ using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.RegistrosAcceso;
 using Sciad.Application.Interfaces;
 using Sciad.Domain.Entities;
+using Sciad.Domain.Time;
 
 namespace Sciad.Application.Services;
 
@@ -51,7 +52,10 @@ public sealed class RegistrosAccesoService : IRegistrosAccesoService
     public async Task<ServicioResultado<RegistroAccesoResultadoDto>> RegistrarAccesoAsync(
         RegistrarAccesoRequest request, int usuarioId, CancellationToken ct = default)
     {
-        var ahora = DateTime.UtcNow;
+        // Fecha/hora de negocio en hora de Guatemala (UTC-6): el "día" no cambia a las 18:00 locales.
+        // El instante real (UTC) se conserva solo para el timestamp de la respuesta.
+        var ahoraUtc = GuatemalaTime.UtcNow;
+        var ahora = GuatemalaTime.FromUtc(ahoraUtc);
         var hoy = DateOnly.FromDateTime(ahora);
 
         // 1) Token QR existe (RNF-01). Devuelve la credencial en cualquier estado + persona.
@@ -140,13 +144,13 @@ public sealed class RegistrosAccesoService : IRegistrosAccesoService
             creado.Id, persona.Id, zona.Id, tipo, usuarioId);
 
         return ServicioResultado<RegistroAccesoResultadoDto>.Ok(
-            RegistroAccesoResultadoDto.From(creado, persona, zona, ahora));
+            RegistroAccesoResultadoDto.From(creado, persona, zona, ahoraUtc));
     }
 
     public async Task<ServicioResultado<List<AccesoDelDiaDto>>> ListarDelDiaAsync(
         int? zonaId, CancellationToken ct = default)
     {
-        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+        var hoy = GuatemalaTime.Hoy;
         var registros = await _registros.ListarDelDiaAsync(zonaId, hoy, ct);
 
         var resultado = new List<AccesoDelDiaDto>();

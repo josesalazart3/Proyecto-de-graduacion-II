@@ -11,7 +11,7 @@ import {
 } from '../../core/services/crud.service';
 import { RegistroHistorial } from '../../core/models/access-log.model';
 import { KpiCard } from '../../shared/ui/kpi-card.component';
-import { horaLocal } from '../../core/util/time';
+import { horaLocal, hoyServidor } from '../../core/util/time';
 import { Card } from '../../shared/ui/card.component';
 
 @Component({
@@ -164,7 +164,7 @@ export class AdminDashboardComponent implements OnInit {
   protected readonly alerts = signal<{ id: string; personaNombre?: string; mensaje: string; fecha: string }[]>([]);
 
   ngOnInit(): void {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = hoyServidor();
     const done = () => {
       if (
         this.accesosHoy() !== '—' &&
@@ -176,9 +176,11 @@ export class AdminDashboardComponent implements OnInit {
       }
     };
 
-    this.logs.historial({ desde: hoy, hasta: hoy }).subscribe((list) => {
-      const rows = list.sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1));
-      this.accesosHoy.set(String(rows.length));
+    // Se pide solo la página de "actividad reciente" (6 más nuevos, el backend ordena por fecha/hora desc) y el
+    // KPI usa el `total` real del servidor (antes contaba filas de una página truncada a 20).
+    this.logs.historialPagina({ desde: hoy, hasta: hoy, tamanoPagina: 6 }).subscribe((page) => {
+      const rows = [...page.items].sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1));
+      this.accesosHoy.set(String(page.total));
       this.events.set(rows.slice(0, 6));
       done();
     });
@@ -205,7 +207,7 @@ export class AdminDashboardComponent implements OnInit {
     });
   }
 
-  /** La hora del registro viene en UTC del servidor: se muestra en hora local. */
+  /** La hora del registro viene en hora de Guatemala: se muestra en la hora del dispositivo. */
   protected horaDe(ev: RegistroHistorial): string {
     return horaLocal(ev.fecha, ev.hora);
   }

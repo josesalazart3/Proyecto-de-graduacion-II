@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Sciad.Application.Dtos.Credenciales;
 using Sciad.Application.Interfaces;
 using Sciad.Domain.Entities;
+using Sciad.Domain.Time;
 
 namespace Sciad.Application.Services;
 
@@ -156,7 +157,7 @@ public sealed class CredencialesService : ICredencialesService
         return ServicioResultado<List<CredencialDto>>.Ok(todas.Select(CredencialDto.From).ToList());
     }
 
-    private static DateOnly Hoy() => DateOnly.FromDateTime(DateTime.UtcNow);
+    private static DateOnly Hoy() => GuatemalaTime.Hoy;
 
     /// <summary>32 bytes aleatorios (CSPRNG) → 64 caracteres hex. RNF-01 / RNF-02.</summary>
     private static string GenerarTokenHex64()

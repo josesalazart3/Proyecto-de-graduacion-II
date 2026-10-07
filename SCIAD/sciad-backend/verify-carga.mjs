@@ -54,7 +54,7 @@ const ADMIN = await getToken('admin@sciad.gt', PASSWORD);
 const zona = await call('POST', '/api/zonas-acceso', { token: ADMIN, body: { nombre: `Z-CARGA-${SUF}`, nivelSeguridad: 'ALTO', nivelRiesgo: 'CRITICO', capacidad: N + K + M } });
 if (zona.status !== 201) throw new Error(`Zona no creada: ${zona.status} ${JSON.stringify(zona.body)}`);
 const zonaId = zona.body.id;
-const hoy    = new Date().toISOString().slice(0, 10);
+const hoy    = new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10); // día de Guatemala (UTC-6), Fase 4
 const finVig = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
 let seqPersona = 0; // contador global: dpiCodigo único sin importar el grupo

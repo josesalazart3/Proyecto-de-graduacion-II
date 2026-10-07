@@ -4,6 +4,7 @@ using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.Reportes;
 using Sciad.Application.Interfaces;
 using Sciad.Domain.Entities;
+using Sciad.Domain.Time;
 
 namespace Sciad.Application.Services;
 
@@ -67,7 +68,7 @@ public sealed class ReportesService : IReportesService
         {
             Periodo = periodo,
             TotalRegistros = filas.Count,
-            Generado = DateOnly.FromDateTime(DateTime.UtcNow),
+            Generado = GuatemalaTime.Hoy,
             UsuarioId = usuarioId,
         }, ct);
 

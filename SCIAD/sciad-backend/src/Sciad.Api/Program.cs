@@ -33,6 +33,9 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptio
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// Cierre diario de auditoría (00:05 hora de Guatemala): marca los ingresos sin egreso del día anterior.
+builder.Services.AddHostedService<Sciad.Api.Background.CierreDiarioHostedService>();
+
 // Respuesta 400 de validación de modelo también con Problem Details consistente (code + message).
 builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = context =>

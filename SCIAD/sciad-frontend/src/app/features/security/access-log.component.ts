@@ -10,7 +10,7 @@ import { Button } from '../../shared/ui/button.component';
 import { Card } from '../../shared/ui/card.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
-import { horaLocal, hoyUtc } from '../../core/util/time';
+import { horaLocal, hoyServidor } from '../../core/util/time';
 
 @Component({
   selector: 'app-access-log',
@@ -110,9 +110,9 @@ export class AccessLogComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly records = signal<AccesoDelDia[]>([]);
 
-  /** La hora llega en UTC del servidor ("hoy" = fecha UTC): se muestra en hora local. */
+  /** La hora llega en hora de Guatemala ("hoy" = día de Guatemala): se muestra en la hora del dispositivo. */
   protected hora(h: string | null | undefined): string {
-    return horaLocal(hoyUtc(), h);
+    return horaLocal(hoyServidor(), h);
   }
 
   protected readonly counts = computed(() => {

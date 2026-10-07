@@ -23,6 +23,13 @@ import { Paginado } from '../models/paginado.model';
 
 const API = environment.apiUrl;
 
+/**
+ * Tamaño de página máximo que acepta el backend en historial, notificaciones, auditoría y reportes.
+ * Si se pide más de 100, esos servicios IGNORAN el valor y devuelven 20 filas (truncando la lista sin avisar),
+ * por eso se pide exactamente 100. (Usuarios y personas no tienen ese tope.)
+ */
+const MAX_PAGINA = '100';
+
 /** Desempaqueta PaginadoDto → items (el frontend no necesita paginación real). */
 function unwrapItems<T>() {
   return map((page: Paginado<T>) => page.items);
@@ -179,13 +186,19 @@ export class AccessLogService {
   historial(filtros?: {
     personaId?: number; zonaId?: number; desde?: string; hasta?: string; tipo?: 'ingreso' | 'egreso';
   }): Observable<RegistroHistorial[]> {
-    let params = new HttpParams().set('tamanoPagina', '500');
+    return this.historialPagina(filtros).pipe(unwrapItems());
+  }
+  /** Igual que `historial` pero devuelve la página completa (con `total` real) y permite fijar `tamanoPagina` (≤ 100). */
+  historialPagina(filtros?: {
+    personaId?: number; zonaId?: number; desde?: string; hasta?: string; tipo?: 'ingreso' | 'egreso'; tamanoPagina?: number;
+  }): Observable<Paginado<RegistroHistorial>> {
+    let params = new HttpParams().set('tamanoPagina', String(Math.min(filtros?.tamanoPagina ?? 100, 100)));
     if (filtros?.personaId) params = params.set('personaId', String(filtros.personaId));
     if (filtros?.zonaId) params = params.set('zonaId', String(filtros.zonaId));
     if (filtros?.desde) params = params.set('desde', filtros.desde);
     if (filtros?.hasta) params = params.set('hasta', filtros.hasta);
     if (filtros?.tipo) params = params.set('tipo', filtros.tipo);
-    return this.http.get<Paginado<RegistroHistorial>>(`${API}/registros-acceso`, { params }).pipe(unwrapItems());
+    return this.http.get<Paginado<RegistroHistorial>>(`${API}/registros-acceso`, { params });
   }
 }
 
@@ -194,7 +207,7 @@ export class NotificationsService {
   constructor(private http: HttpClient) {}
   /** GET /api/notificaciones?tamanoPagina=N → Notificacion[]. */
   list(): Observable<Notificacion[]> {
-    const params = new HttpParams().set('tamanoPagina', '500');
+    const params = new HttpParams().set('tamanoPagina', MAX_PAGINA);
     return this.http.get<Paginado<Notificacion>>(`${API}/notificaciones`, { params }).pipe(unwrapItems());
   }
   /** PATCH /api/notificaciones/{id}/leida {leida}. */
@@ -208,7 +221,7 @@ export class AuditService {
   constructor(private http: HttpClient) {}
   /** GET /api/auditoria?tipo&estado → HallazgoAuditoria[]. */
   list(filtros?: { tipo?: string; estado?: string }): Observable<HallazgoAuditoria[]> {
-    let params = new HttpParams().set('tamanoPagina', '500');
+    let params = new HttpParams().set('tamanoPagina', MAX_PAGINA);
     if (filtros?.tipo) params = params.set('tipo', filtros.tipo);
     if (filtros?.estado) params = params.set('estado', filtros.estado);
     return this.http.get<Paginado<HallazgoAuditoria>>(`${API}/auditoria`, { params }).pipe(unwrapItems());
@@ -228,7 +241,7 @@ export class ReportsService {
   constructor(private http: HttpClient) {}
   /** GET /api/reportes → Reporte[] (paginado desempaquetado). */
   list(): Observable<Reporte[]> {
-    const params = new HttpParams().set('tamanoPagina', '500');
+    const params = new HttpParams().set('tamanoPagina', MAX_PAGINA);
     return this.http.get<Paginado<Reporte>>(`${API}/reportes`, { params }).pipe(unwrapItems());
   }
   /** POST /api/reportes/generar → CSV (blob). El backend NO guarda el archivo; devuelve el CSV. */
