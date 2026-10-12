@@ -9,6 +9,9 @@ import { Button } from '../../shared/ui/button.component';
 import { Icon, IconName } from '../../shared/ui/icon.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
+import { map } from 'rxjs';
 
 const TIPO_LABELS: Record<string, string> = {
   concentracion: 'Concentración inusual',
@@ -34,7 +37,7 @@ function tipoTone(tipo: string): 'danger' | 'warning' | 'info' {
 @Component({
   selector: 'app-notifications',
   standalone: true,
-  imports: [Card, Button, Icon, EmptyState],
+  imports: [LoadError, Card, Button, Icon, EmptyState],
   template: `
     <div class="page">
       <div class="page-header">
@@ -49,6 +52,8 @@ function tipoTone(tipo: string): 'danger' | 'warning' | 'info' {
 
       @if (loading()) {
         <div class="skels">@for (i of [1,2,3,4]; track i) { <div class="skel"></div> }</div>
+      } @else if (carga.error(); as e) {
+        <sci-load-error [message]="e" (retry)="carga.cargar()" />
       } @else if (notifs().length === 0) {
         <sci-card><sci-empty-state icon="bell" title="Sin notificaciones" message="No hay eventos anómalos pendientes." /></sci-card>
       } @else {
@@ -114,8 +119,10 @@ export class NotificationsComponent implements OnInit {
   protected readonly tipoLabel = tipoLabel;
   protected readonly tipoIcon = tipoIcon;
   protected readonly tipoTone = tipoTone;
-  protected readonly loading = signal(true);
-  protected readonly notifs = signal<Notificacion[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.list().pipe(map((list) => [...list].sort((a, b) => (a.fecha < b.fecha ? 1 : -1)))), [] as Notificacion[], 'No se pudieron cargar las notificaciones.');
+  protected readonly notifs = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
   protected readonly unread = computed(() => this.notifs().filter((n) => !n.leida).length);
 
   ngOnInit(): void {
@@ -123,15 +130,7 @@ export class NotificationsComponent implements OnInit {
   }
 
   protected load(): void {
-    this.loading.set(true);
-    this.service.list().subscribe({
-      next: (list) => {
-        // Orden: más recientes primero.
-        this.notifs.set(list.sort((a, b) => (a.fecha < b.fecha ? 1 : -1)));
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
+    this.carga.cargar(); // más recientes primero
   }
 
   protected mark(n: Notificacion): void {

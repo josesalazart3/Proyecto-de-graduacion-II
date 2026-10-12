@@ -16,7 +16,7 @@ export function createServer() {
     { id: '1', nombre: 'Entrada Principal', nivelSeguridad: 'MEDIO', capacidad: 50, nivelRiesgo: 'BAJO', estado: 'activo' },
     { id: '2', nombre: 'Sala de Servidores', nivelSeguridad: 'ALTO', capacidad: 5, nivelRiesgo: 'ALTO', estado: 'activo' },
   ];
-  const persona = { id: '7', nombre: 'Juan Pérez López', dpiCodigo: '2345678901234', tipo: 1, estado: 'activo' };
+  const persona = { id: '7', nombre: 'Juan Pérez López', dpiCodigo: '2345678900101', tipo: 1, estado: 'activo' };
   const creds = [
     { id: '1', personaId: '7', personaNombre: persona.nombre, dpiCodigo: persona.dpiCodigo, token: TOK.A, estado: 'activa', emitido: '2026-08-21', motivo: null, reemitidoDe: null },
     { id: '2', personaId: '7', personaNombre: persona.nombre, dpiCodigo: persona.dpiCodigo, token: TOK.REV, estado: 'revocada', emitido: '2026-08-01', motivo: 'Pérdida', reemitidoDe: null },

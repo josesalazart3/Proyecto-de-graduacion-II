@@ -13,11 +13,14 @@ namespace Sciad.Tests.Support;
 public static class TestData
 {
     // ---------------- Persona ----------------
+    /// <summary>DPI válido de 13 dígitos (Fase 8): 9 dígitos derivados del id + departamento 01 + municipio 01.</summary>
+    public static string DpiValido(int id = 1) => $"{241230000 + id:D9}0101";
+
     public static Persona PersonaActiva(int id = 1, string nombre = "Ana López") =>
-        new() { Id = id, Nombre = nombre, DpiCodigo = $"DPI-{id:D4}", Tipo = Persona.TipoColaborador, Estado = "activo" };
+        new() { Id = id, Nombre = nombre, DpiCodigo = DpiValido(id), Tipo = Persona.TipoColaborador, Estado = "activo" };
 
     public static Persona PersonaInactiva(int id = 1) =>
-        new() { Id = id, Nombre = "Inactiva", DpiCodigo = $"DPI-{id:D4}", Tipo = Persona.TipoVisitante, Estado = "inactivo" };
+        new() { Id = id, Nombre = "Inactiva", DpiCodigo = DpiValido(id), Tipo = Persona.TipoVisitante, Estado = "inactivo" };
 
     // ---------------- Zona ----------------
     public static ZonaAcceso ZonaActiva(int id = 1, string nombre = "Oficinas") =>

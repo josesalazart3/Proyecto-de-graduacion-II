@@ -70,6 +70,9 @@ public class SciadDbContext : DbContext
             // CHECK IN (1, 2) — 1 = colaborador, 2 = visitante (DERCAS §7.2/§7.4)
             e.ToTable(t => t.HasCheckConstraint("CK_personas_tipo", "tipo IN (1, 2)"));
 
+            // DPI de 13 dígitos (Fase 8, defensa en profundidad: la regla completa vive en ValidacionPersona).
+            e.ToTable(t => t.HasCheckConstraint("CK_personas_dpi_codigo", "dpi_codigo ~ '^[0-9]{13}$'"));
+
             e.HasIndex(p => p.DpiCodigo).IsUnique();
         });
 
@@ -83,6 +86,9 @@ public class SciadDbContext : DbContext
             e.Property(z => z.Capacidad);
             e.Property(z => z.NivelRiesgo).HasMaxLength(20).IsRequired().HasDefaultValue("MEDIO");
             e.Property(z => z.Estado).HasMaxLength(20).HasDefaultValue("activo");
+
+            // Fase 8.4: baja lógica solo con valores válidos (deshabilitar = 'inactivo'; nunca borrado físico, RNF-06).
+            e.ToTable(t => t.HasCheckConstraint("CK_zonas_acceso_estado", "estado IN ('activo', 'inactivo')"));
             e.HasIndex(z => z.Estado);
         });
 

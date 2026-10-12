@@ -22,10 +22,17 @@ public sealed class ZonasService : IZonasService
         _logger = logger;
     }
 
-    public async Task<ServicioResultado<IReadOnlyList<ZonaDto>>> ListarAsync(CancellationToken ct = default)
+    public Task<ServicioResultado<IReadOnlyList<ZonaDto>>> ListarAsync(CancellationToken ct = default)
+        => ListarAsync(null, ct);
+
+    /// <summary>Fase 8.4: filtra por estado (pocas filas, sin paginación: se filtra en memoria).</summary>
+    public async Task<ServicioResultado<IReadOnlyList<ZonaDto>>> ListarAsync(string? estado, CancellationToken ct = default)
     {
         var zonas = await _zonas.ListarAsync(ct);
-        return ServicioResultado<IReadOnlyList<ZonaDto>>.Ok(zonas.Select(ZonaDto.From).ToList());
+        return ServicioResultado<IReadOnlyList<ZonaDto>>.Ok(zonas
+            .Where(z => estado is null || string.Equals(z.Estado, estado, StringComparison.OrdinalIgnoreCase))
+            .Select(ZonaDto.From)
+            .ToList());
     }
 
     public async Task<ServicioResultado<ZonaDto>> CrearAsync(CrearZonaRequest req, CancellationToken ct = default)

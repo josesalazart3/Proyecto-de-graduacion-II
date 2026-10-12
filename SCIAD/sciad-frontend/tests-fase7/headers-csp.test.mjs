@@ -71,7 +71,7 @@ console.log('\n[B] La aplicación completa funciona bajo la CSP (0 violaciones)'
 const apiCall = async (m, p, body, token) => { const r = await fetch(`${BASE}/api${p}`, { method: m, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined }); let j = null; try { j = await r.json(); } catch {} return j; };
 const admin = (await apiCall('POST', '/auth/login', { email: 'admin@sciad.gt', password: 'sciad123' })).token;
 const zona = await apiCall('POST', '/zonas-acceso', { nombre: 'Entrada', nivelSeguridad: 'MEDIO', nivelRiesgo: 'BAJO', capacidad: 10 }, admin);
-const per = await apiCall('POST', '/personas', { nombre: 'Juan CSP', dpiCodigo: 'CSP-1', tipo: 1 }, admin);
+const per = await apiCall('POST', '/personas', { nombre: 'Juan CSP', dpiCodigo: '2412300010101', tipo: 1 }, admin);
 await apiCall('POST', '/perfiles-acceso', { personaId: +per.id, zonaId: +zona.id, vigenciaInicio: '2020-01-01', vigenciaFin: '2099-01-01' }, admin);
 await apiCall('POST', `/credenciales/${per.id}/generar`, null, admin);
 

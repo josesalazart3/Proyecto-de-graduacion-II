@@ -11,6 +11,7 @@
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { dpiPrueba, nombrePrueba } from './datos-prueba.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.SCIAD_BASE ?? 'http://localhost:3000';
@@ -31,7 +32,7 @@ async function call(method, path, { token, body } = {}) {
 }
 const items = (b) => (Array.isArray(b) ? b : b?.items ?? []);
 async function esperarSalud(ms = 120000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const r = await fetch(`${BASE}/api/health`); if (r.ok) return true; } catch { /* aún no */ } await sleep(2000); } return false; }
-async function hallazgos(token, nombre) { const r = await call('GET', '/api/auditoria?tipo=acceso_sin_egreso&tamanoPagina=100', { token }); return items(r.body).filter((h) => (h.descripcion ?? '').includes(nombre)); }
+async function hallazgos(token, nombre) { const r = await call('GET', '/api/auditoria?tipo=acceso_sin_egreso&tamanoPagina=100', { token }); return items(r.body).filter((h) => (h.descripcion ?? '').includes(nombrePrueba(nombre))); }
 
 const R = Date.now().toString().slice(-8);
 console.log(`\nCierre diario de auditoría → ${BASE}  (ayer en Guatemala = ${ayer})\n`);
@@ -40,7 +41,7 @@ if (!login.body?.token) { console.error('✗ No se pudo iniciar sesión como adm
 const T = login.body.token, adminId = login.body.user.id;
 const zona = items((await call('GET', '/api/zonas-acceso', { token: T })).body).find((z) => z.estado === 'activo');
 if (!zona) { console.error('✗ No hay ninguna zona activa (ejecuta seed-demo.mjs).'); process.exit(1); }
-const crear = async (k) => (await call('POST', '/api/personas', { token: T, body: { nombre: `ZZ CIERRE ${k} ${R}`, dpiCodigo: `CIE-${R}-${k}`, tipo: 1 } })).body;
+const crear = async (k) => (await call('POST', '/api/personas', { token: T, body: { nombre: nombrePrueba(`ZZ CIERRE ${k} ${R}`), dpiCodigo: dpiPrueba(), tipo: 1 } })).body;
 const A = await crear('A'), B = await crear('B');
 const sembrar = (p) => PSQL(`INSERT INTO registros_acceso (persona_id, zona_id, fecha, hora, tipo, usuario_id) VALUES (${p.id}, ${zona.id}, '${ayer}', '08:00:00', 'ingreso', ${adminId});`);
 

@@ -40,7 +40,7 @@ public static class Harness
     public static int Main()
     {
         var clock = new ClockFake(); GuatemalaTime.Proveedor = clock;
-        var persona = new Persona { Id = 7, Nombre = "Juan Pérez López", DpiCodigo = "D1", Tipo = 1, Estado = "activo" };
+        var persona = new Persona { Id = 7, Nombre = "Juan Pérez López", DpiCodigo = "2412300070101", Tipo = 1, Estado = "activo" };
         var zona = new ZonaAcceso { Id = 1, Nombre = "Entrada Principal", NivelSeguridad = "MEDIO", Estado = "activo" };
         var cred = new CredencialQr { Id = 1, PersonaId = 7, Persona = persona, Token = new string('A', 64), Estado = "activa" };
         var perfil = new PerfilAcceso { Id = 1, PersonaId = 7, ZonaId = 1, VigenciaInicio = new DateOnly(2026, 1, 1), VigenciaFin = new DateOnly(2026, 12, 31) };
@@ -117,8 +117,8 @@ public static class Harness
         clock.Now = Z("2026-08-22T06:05:00"); Check("00:05:00 GT exactas → la próxima es mañana (24 h)", GuatemalaTime.HastaProximaHora(hora0005) == TimeSpan.FromHours(24));
 
         Console.WriteLine("[5] Persona que se va sin marcar salida: se marca a la medianoche");
-        var juan = new Persona { Id = 7, Nombre = "Juan Pérez López", DpiCodigo = "D1", Tipo = 1, Estado = "activo" };
-        var ana = new Persona { Id = 8, Nombre = "Ana Lucía Castillo", DpiCodigo = "D2", Tipo = 1, Estado = "activo" };
+        var juan = new Persona { Id = 7, Nombre = "Juan Pérez López", DpiCodigo = "2412300070101", Tipo = 1, Estado = "activo" };
+        var ana = new Persona { Id = 8, Nombre = "Ana Lucía Castillo", DpiCodigo = "2412300080101", Tipo = 1, Estado = "activo" };
         var z1 = new ZonaAcceso { Id = 1, Nombre = "Entrada Principal", NivelSeguridad = "MEDIO", Estado = "activo" };
         var dia = new DateOnly(2026, 8, 21);
         var regs = new List<RegistroAcceso>

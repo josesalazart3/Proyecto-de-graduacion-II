@@ -1,6 +1,7 @@
 // Verificación real de la Fase 2B contra el contenedor corriendo.
 // Uso: node verify-2b.mjs   (levanta tokens con curl interno vía fetch)
 import { strict as assert } from 'node:assert';
+import { dpiPrueba } from './datos-prueba.mjs';
 
 const BASE = process.env.SCIAD_BASE ?? 'http://localhost:3000';
 const H = { 'Content-Type': 'application/json' };
@@ -70,24 +71,26 @@ console.log('\n== CU-01 Usuarios ==');
 
 console.log('\n== CU-02 Personas ==');
 let idP, idP2;
+// Fase 8: DPI de 13 dígitos válidos (y nuevos en cada corrida, para no chocar con datos anteriores).
+const DPI1 = dpiPrueba(), DPI2 = dpiPrueba(), DPI3 = dpiPrueba();
 {
-  const per = await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'Colaborador Uno', dpiCodigo: '1001-00001', tipo: 1 } });
+  const per = await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'Colaborador Uno', dpiCodigo: DPI1, tipo: 1 } });
   check('POST persona colaborador -> 201', per.status === 201);
   check('  tipo 1 = colaborador', per.body?.tipo === 1);
   idP = per.body?.id;
 
-  const vis = await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'Visitante Dos', dpiCodigo: '1002-00002', tipo: 2 } });
+  const vis = await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'Visitante Dos', dpiCodigo: DPI2, tipo: 2 } });
   check('POST persona visitante (tipo 2) -> 201', vis.status === 201 && vis.body?.tipo === 2);
   idP2 = vis.body?.id;
 
-  check('POST dpi duplicado -> 409', (await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'z', dpiCodigo: '1001-00001', tipo: 1 } })).status === 409);
-  check('POST tipo inválido -> 400', (await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'z', dpiCodigo: '1003-00003', tipo: 99 } })).status === 400);
+  check('POST dpi duplicado -> 409', (await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'Zeta Duplicado', dpiCodigo: DPI1, tipo: 1 } })).status === 409);
+  check('POST tipo inválido -> 400', (await call('POST', '/api/personas', { token: admin.token, body: { nombre: 'Zeta Tipo', dpiCodigo: DPI3, tipo: 99 } })).status === 400);
 
   const l1 = await call('GET', '/api/personas?tipo=1&estado=activo', { token: admin.token });
   check('GET filtro tipo=1 estado=activo', l1.status === 200 && l1.body?.items?.every(p => p.tipo === 1 && p.estado === 'activo'));
   check('GET filtro tipo inexistente -> 400', (await call('GET', '/api/personas?tipo=7', { token: admin.token })).status === 400);
 
-  const edit = await call('PUT', `/api/personas/${idP}`, { token: admin.token, body: { nombre: 'Colaborador Uno Editado', dpiCodigo: '1001-00001', tipo: 1 } });
+  const edit = await call('PUT', `/api/personas/${idP}`, { token: admin.token, body: { nombre: 'Colaborador Uno Editado', dpiCodigo: DPI1, tipo: 1 } });
   check('PUT edita persona -> 200', edit.status === 200 && edit.body?.nombre === 'Colaborador Uno Editado');
 
   const des = await call('PATCH', `/api/personas/${idP}/estado`, { token: admin.token, body: { estado: 'inactivo' } });
@@ -117,7 +120,7 @@ let idZ;
   check('PATCH zona inactivo -> 200 (baja lógica)', des.status === 200 && des.body?.estado === 'inactivo');
   check('PATCH zona estado inválido -> 400', (await call('PATCH', `/api/zonas-acceso/${idZ}/estado`, { token: admin.token, body: { estado: 'borrado' } })).status === 400);
   check('PATCH zona inexistente -> 404', (await call('PATCH', '/api/zonas-acceso/999999/estado', { token: admin.token, body: { estado: 'inactivo' } })).status === 404);
-  check('GET incluye la inactiva (soft-delete)', (await call('GET', '/api/zonas-acceso', { token: admin.token })).body?.some(zz => zz.id === idZ && zz.estado === 'inactivo') === true);
+  check('GET incluye la inactiva (soft-delete)', (await call('GET', '/api/zonas-acceso?estado=todos', { token: admin.token })).body?.some(zz => zz.id === idZ && zz.estado === 'inactivo') === true);
   // reactivar para el flujo E2E de perfiles (la zona debe estar activa)
   await call('PATCH', `/api/zonas-acceso/${idZ}/estado`, { token: admin.token, body: { estado: 'activo' } });
   check('PATCH zona reactivada -> activo', (await call('GET', '/api/zonas-acceso', { token: admin.token })).body?.some(zz => zz.id === idZ && zz.estado === 'activo') === true);

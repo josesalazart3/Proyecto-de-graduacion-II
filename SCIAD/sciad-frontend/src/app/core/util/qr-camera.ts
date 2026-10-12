@@ -3,7 +3,8 @@
 //  - Si no, cae a `jsQR` (JavaScript puro) sobre un canvas — necesario para iOS/Firefox.
 // Requiere contexto seguro (HTTPS o localhost): es una restricción del navegador para getUserMedia.
 
-export type CamaraErrorCode = 'INSECURE' | 'DENIED' | 'NOCAMERA' | 'BUSY' | 'UNSUPPORTED' | 'UNKNOWN';
+/** ABORTED: se apagó la cámara mientras aún se estaba iniciando (no es un error para el usuario). */
+export type CamaraErrorCode = 'INSECURE' | 'DENIED' | 'NOCAMERA' | 'BUSY' | 'UNSUPPORTED' | 'UNKNOWN' | 'ABORTED';
 
 export class CamaraError extends Error {
   constructor(
@@ -23,7 +24,10 @@ export const CAMARA_MENSAJES: Record<CamaraErrorCode, string> = {
   BUSY: 'La cámara está en uso por otra aplicación. Ciérrala e inténtalo de nuevo.',
   UNSUPPORTED: 'Este navegador no permite acceder a la cámara. Prueba con Chrome o Safari actualizados.',
   UNKNOWN: 'No se pudo iniciar la cámara.',
+  ABORTED: 'Se canceló el inicio de la cámara.',
 };
+
+const abortada = () => new CamaraError('ABORTED', CAMARA_MENSAJES.ABORTED);
 
 function mapError(e: unknown): CamaraError {
   const name = (e as { name?: string })?.name ?? '';
@@ -86,6 +90,12 @@ export class QrCameraScanner {
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private lastText: string | null = null;
+  /**
+   * Generación del arranque (Fase 8.5). Cada stop() la incrementa: si llega a terminar un start() de una generación
+   * anterior (p. ej. el usuario salió de la pantalla mientras getUserMedia aún estaba pendiente), sus pistas se
+   * detienen de inmediato y no queda ningún flujo de vídeo vivo.
+   */
+  private generacion = 0;
 
   /** Intervalo entre intentos de lectura (ms). ~8 lecturas/s es suficiente y cuida la batería. */
   private readonly intervalMs = 120;
@@ -121,16 +131,24 @@ export class QrCameraScanner {
     const motivo = QrCameraScanner.soportado();
     if (motivo) throw new CamaraError(motivo, CAMARA_MENSAJES[motivo]);
 
-    this.stop();
+    this.stop(); // nunca dos flujos: se cierra el anterior antes de abrir uno nuevo
+    const gen = this.generacion;
     const video: MediaTrackConstraints = deviceId
       ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
       : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } };
 
+    let stream: MediaStream;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+      stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
     } catch (e) {
-      throw mapError(e);
+      throw gen !== this.generacion ? abortada() : mapError(e);
     }
+    if (gen !== this.generacion) {
+      // Se pidió apagar mientras se esperaba el permiso / la cámara: se libera ya.
+      stream.getTracks().forEach((t) => t.stop());
+      throw abortada();
+    }
+    this.stream = stream;
 
     // iOS Safari exige estos atributos para reproducir en línea.
     this.video.muted = true;
@@ -139,24 +157,39 @@ export class QrCameraScanner {
     try {
       await this.video.play();
     } catch (e) {
+      if (gen !== this.generacion) throw abortada();
       this.stop();
       throw mapError(e);
     }
+    if (gen !== this.generacion) throw abortada(); // stop() ya liberó el flujo
 
     await this.prepararDetector();
+    if (gen !== this.generacion) throw abortada();
     this.running = true;
     this.paused = false;
     this.lastText = null;
     this.programar();
   }
 
+  /** Apaga la cámara de verdad: pistas detenidas (luz apagada), bucle cancelado, detector/canvas liberados. */
   stop(): void {
+    this.generacion++; // invalida cualquier start() que aún esté en curso
     this.running = false;
+    this.paused = false;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
+    this.video.pause();
     this.video.srcObject = null;
+    this.detector = null;
+    if (this.canvas) {
+      this.canvas.width = 0; // libera la memoria del canvas
+      this.canvas.height = 0;
+    }
+    this.canvas = null;
+    this.ctx = null;
+    this.lastText = null;
   }
 
   pause(): void {
@@ -211,6 +244,7 @@ export class QrCameraScanner {
     try {
       if (!this.paused && this.video.readyState >= 2 && this.video.videoWidth > 0) {
         const text = await this.leerFotograma();
+        if (!this.running) return; // se apagó mientras se leía el fotograma
         if (text && text !== this.lastText) {
           this.lastText = text;
           this.onDetect(text);

@@ -24,6 +24,12 @@ import { Paginado } from '../models/paginado.model';
 const API = environment.apiUrl;
 
 /**
+ * Filtro de estado de los listados de usuarios, personas y zonas (Fase 8.4). Sin parámetro el backend devuelve solo
+ * los ACTIVOS; las pantallas de administración piden 'todos' y separan Activos/Deshabilitados en el cliente.
+ */
+export type EstadoLista = 'activo' | 'inactivo' | 'todos';
+
+/**
  * Tamaño de página máximo que acepta el backend en historial, notificaciones, auditoría y reportes.
  * Si se pide más de 100, esos servicios IGNORAN el valor y devuelven 20 filas (truncando la lista sin avisar),
  * por eso se pide exactamente 100. (Usuarios y personas no tienen ese tope.)
@@ -38,9 +44,10 @@ function unwrapItems<T>() {
 @Injectable({ providedIn: 'root' })
 export class UsersService {
   constructor(private http: HttpClient) {}
-  /** GET /api/usuarios?tamanoPagina=N → Usuario[] (desempaquetado). */
-  list(): Observable<Usuario[]> {
-    const params = new HttpParams().set('tamanoPagina', '500');
+  /** GET /api/usuarios?tamanoPagina=N[&estado] → Usuario[] (desempaquetado). Sin estado: solo activos. */
+  list(estado?: EstadoLista): Observable<Usuario[]> {
+    let params = new HttpParams().set('tamanoPagina', '500');
+    if (estado) params = params.set('estado', estado);
     return this.http.get<Paginado<Usuario>>(`${API}/usuarios`, { params }).pipe(unwrapItems());
   }
   /** POST /api/usuarios — el backend espera `correo` (no email). */
@@ -71,10 +78,17 @@ export class UsersService {
 @Injectable({ providedIn: 'root' })
 export class PersonasService {
   constructor(private http: HttpClient) {}
-  /** GET /api/personas?tamanoPagina=N → Persona[]. */
-  list(): Observable<Persona[]> {
-    const params = new HttpParams().set('tamanoPagina', '500');
+  /** GET /api/personas?tamanoPagina=N[&estado] → Persona[]. Sin estado: solo activas. */
+  list(estado?: EstadoLista): Observable<Persona[]> {
+    let params = new HttpParams().set('tamanoPagina', '500');
+    if (estado) params = params.set('estado', estado);
     return this.http.get<Paginado<Persona>>(`${API}/personas`, { params }).pipe(unwrapItems());
+  }
+  /** Total real de personas (opcionalmente por estado), sin traer la lista: GET /api/personas?tamanoPagina=1 → total. */
+  contar(estado?: 'activo' | 'inactivo'): Observable<number> {
+    let params = new HttpParams().set('tamanoPagina', '1');
+    if (estado) params = params.set('estado', estado);
+    return this.http.get<Paginado<Persona>>(`${API}/personas`, { params }).pipe(map((page) => page.total));
   }
   create(p: PersonaPayload): Observable<Persona> {
     return this.http.post<Persona>(`${API}/personas`, p);
@@ -95,9 +109,10 @@ export class PersonasService {
 @Injectable({ providedIn: 'root' })
 export class ZonasService {
   constructor(private http: HttpClient) {}
-  /** GET /api/zonas-acceso → Zona[] (sin paginar). */
-  list(): Observable<Zona[]> {
-    return this.http.get<Zona[]>(`${API}/zonas-acceso`);
+  /** GET /api/zonas-acceso[?estado] → Zona[] (sin paginar). Sin estado: solo activas (escáner, perfiles nuevos). */
+  list(estado?: EstadoLista): Observable<Zona[]> {
+    const params = estado ? new HttpParams().set('estado', estado) : undefined;
+    return this.http.get<Zona[]>(`${API}/zonas-acceso`, { params });
   }
   create(z: { nombre: string; nivelSeguridad: string; nivelRiesgo: string; capacidad?: number | null }): Observable<Zona> {
     return this.http.post<Zona>(`${API}/zonas-acceso`, {

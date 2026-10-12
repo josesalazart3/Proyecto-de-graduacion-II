@@ -3,6 +3,7 @@
 // Cada corrida usa sufijos únicos (timestamp) en DPIs/nombres para poder repetirse sin chocar.
 // Las notificaciones (token_revocado / fuera_horario) se confirman por separado con psql.
 import { strict as assert } from 'node:assert';
+import { dpiPrueba, nombrePrueba } from './datos-prueba.mjs';
 
 const BASE = process.env.SCIAD_BASE ?? 'http://localhost:3000';
 const H = { 'Content-Type': 'application/json' };
@@ -46,7 +47,7 @@ const A = admin.token, S = seg.token, G = ger.token;
 
 // ---------- Setup base: persona + zona validada ----------
 async function crearPersona(sufijo) {
-  const r = await call('POST', '/api/personas', { token: A, body: { nombre: `P2C-${sufijo}-${R}`, dpiCodigo: `2CA-${sufijo}-${R}`, tipo: 1 } });
+  const r = await call('POST', '/api/personas', { token: A, body: { nombre: nombrePrueba(`P2C-${sufijo}-${R}`), dpiCodigo: dpiPrueba(), tipo: 1 } });
   assert.equal(r.status, 201, `Persona ${sufijo} no creada: ${r.status}`);
   return r.body;
 }

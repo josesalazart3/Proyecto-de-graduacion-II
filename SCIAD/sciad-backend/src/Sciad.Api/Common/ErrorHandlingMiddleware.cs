@@ -51,9 +51,11 @@ public sealed class ErrorHandlingMiddleware
         }
         // Caracteres no válidos en UTF-8 (p. ej. NUL \u0000) rechazados por PostgreSQL al guardar: es una entrada
         // inválida del cliente (400), no un error del servidor. No cambia el esquema ni las migraciones.
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "22021" } && !context.Response.HasStarted)
+        // 23514 (Fase 8): una restricción CHECK de la BD (p. ej. DPI de 13 dígitos) rechazó el dato; la validación de la
+        // API debió detenerlo antes, pero si llega aquí sigue siendo una entrada inválida (400), no un 500.
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "22021" or "23514" } && !context.Response.HasStarted)
         {
-            _logger.LogWarning(ex, "Entrada inválida (codificación) en {Method} {Path}", context.Request.Method, context.Request.Path);
+            _logger.LogWarning(ex, "Entrada inválida (codificación o restricción CHECK) en {Method} {Path}", context.Request.Method, context.Request.Path);
 
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             context.Response.ContentType = JsonDefaults.ContentType;

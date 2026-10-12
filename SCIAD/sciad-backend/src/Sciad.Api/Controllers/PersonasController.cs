@@ -4,6 +4,7 @@ using Sciad.Api.Common;
 using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.Personas;
 using Sciad.Application.Interfaces;
+using Sciad.Application.Services;
 
 namespace Sciad.Api.Controllers;
 
@@ -22,7 +23,7 @@ public sealed class PersonasController : ControllerBase
 
     /// <summary>
     /// Lista paginada de personas, filtrable por <c>tipo</c> (1=colaborador, 2=visitante)
-    /// y por <c>estado</c> (activo/inactivo).
+    /// y por <c>estado</c>: <c>activo</c> (por defecto), <c>inactivo</c> o <c>todos</c> (Fase 8.4).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PaginadoDto<PersonaDto>), StatusCodes.Status200OK)]
@@ -34,7 +35,12 @@ public sealed class PersonasController : ControllerBase
         [FromQuery] int tamanoPagina = 20,
         CancellationToken ct = default)
     {
-        var resultado = await _personas.ListarAsync(tipo, estado, pagina, tamanoPagina, ct);
+        if (!FiltroEstado.Interpretar(estado, out var filtro, out var mensaje))
+        {
+            return ApiProblem.BadRequest(mensaje, CodigosError.Validacion);
+        }
+
+        var resultado = await _personas.ListarAsync(tipo, filtro, pagina, tamanoPagina, ct);
         return resultado.Exitoso ? Ok(resultado.Dato) : ApiProblem.FromServicio(resultado);
     }
 

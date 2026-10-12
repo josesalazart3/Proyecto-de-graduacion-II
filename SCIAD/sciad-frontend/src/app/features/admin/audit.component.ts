@@ -9,6 +9,8 @@ import { Card } from '../../shared/ui/card.component';
 import { Badge, StatusKey } from '../../shared/ui/badge.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
 
 function estBadge(e: HallazgoEstado): StatusKey {
   return e === 'abierto' ? 'abierto' : e === 'en_revision' ? 'revisando' : 'resuelto';
@@ -25,7 +27,7 @@ function tipoLabel(tipo: string): string {
 @Component({
   selector: 'app-admin-audit',
   standalone: true,
-  imports: [Button, Card, Badge, EmptyState],
+  imports: [LoadError, Button, Card, Badge, EmptyState],
   template: `
     <div class="page">
       <div class="page-header">
@@ -46,6 +48,8 @@ function tipoLabel(tipo: string): string {
                 <tr class="sci-skel-row">@for (c of [1,2,3,4]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table>
+          } @else if (carga.error(); as e) {
+            <sci-load-error [message]="e" (retry)="carga.cargar()" />
           } @else if (items().length === 0) {
             <sci-empty-state icon="checkCircle" title="Sin hallazgos" message="Todas las bitácoras verificadas sin inconsistencias." />
           } @else {
@@ -115,23 +119,18 @@ export class AuditComponent implements OnInit {
 
   protected readonly estBadge = estBadge;
   protected readonly tipoLabel = tipoLabel;
-  protected readonly loading = signal(true);
   protected readonly verifying = signal(false);
-  protected readonly items = signal<HallazgoAuditoria[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.list(), [] as HallazgoAuditoria[], 'No se pudieron cargar los hallazgos.');
+  protected readonly items = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
 
   ngOnInit(): void {
     this.load();
   }
 
   protected load(): void {
-    this.loading.set(true);
-    this.service.list().subscribe({
-      next: (list) => {
-        this.items.set(list);
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
+    this.carga.cargar();
   }
 
   protected verify(): void {

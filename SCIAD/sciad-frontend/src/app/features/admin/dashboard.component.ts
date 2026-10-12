@@ -1,7 +1,8 @@
 // Panel de control: Fase 3 lo reconcilia al backend real. Los KPI se componen en el cliente
 // (decisión aprobada en su momento): históricos de hoy, personas activas,
 // notificaciones no leídas y credenciales emitidas. No existe endpoint "dashboard" en el backend.
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit } from '@angular/core';
+import { forkJoin, map } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import {
   AccessLogService,
@@ -13,11 +14,22 @@ import { RegistroHistorial } from '../../core/models/access-log.model';
 import { KpiCard } from '../../shared/ui/kpi-card.component';
 import { horaLocal, hoyServidor } from '../../core/util/time';
 import { Card } from '../../shared/ui/card.component';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
+
+const VACIO = {
+  accesosHoy: '—',
+  personasActivas: '—',
+  credencialesEmitidas: '—',
+  alertasPendientes: '—',
+  events: [] as RegistroHistorial[],
+  alerts: [] as { id: string; personaNombre?: string; mensaje: string; fecha: string }[],
+};
 
 @Component({
   selector: 'app-admin-dashboard',
   standalone: true,
-  imports: [KpiCard, Card, RouterLink],
+  imports: [KpiCard, Card, RouterLink, LoadError],
   template: `
     <div class="page">
       <div class="page-header">
@@ -27,18 +39,22 @@ import { Card } from '../../shared/ui/card.component';
         </div>
       </div>
 
+      @if (carga.error(); as e) {
+        <sci-card><sci-load-error [message]="e" (retry)="carga.cargar()" /></sci-card>
+      }
+
       <section class="grid grid-cols-4">
         <sci-kpi-card title="Accesos hoy" [value]="accesosHoy()" icon="activity" tone="brand" [loading]="loading()" />
         <sci-kpi-card title="Personas activas" [value]="personasActivas()" icon="users" tone="info" [loading]="loading()" />
         <sci-kpi-card title="Alertas pendientes" [value]="alertasPendientes()" icon="bell" tone="danger" [loading]="loading()" />
-        <sci-kpi-card title="Credenciales emitidas" [value]="credencialesEmitidas()" icon="qr" tone="success" [loading]="loading()" />
+        <sci-kpi-card title="Credenciales activas" [value]="credencialesEmitidas()" icon="qr" tone="success" [loading]="loading()" />
       </section>
 
       <section class="grid grid-cols-3">
         <sci-card class="col-span-2">
           <div class="section-head">
             <span class="section-title">Actividad reciente</span>
-            <a routerLink="/traza" class="ghost-link">Ver trazabilidad</a>
+            <a routerLink="/admin/accesos" class="ghost-link">Ver accesos de hoy</a>
           </div>
           <div class="section-body--flush">
             @if (loading()) {
@@ -155,56 +171,49 @@ export class AdminDashboardComponent implements OnInit {
   private readonly cred = inject(CredentialsService);
   private readonly notif = inject(NotificationsService);
 
-  protected readonly loading = signal(true);
-  protected readonly accesosHoy = signal('—');
-  protected readonly personasActivas = signal('—');
-  protected readonly alertasPendientes = signal('—');
-  protected readonly credencialesEmitidas = signal('—');
-  protected readonly events = signal<RegistroHistorial[]>([]);
-  protected readonly alerts = signal<{ id: string; personaNombre?: string; mensaje: string; fecha: string }[]>([]);
+  /** Carga común (Fase 8.2): todos los KPI juntos; si algo falla se muestra el error con "Reintentar" (antes quedaban
+   *  en "cargando" para siempre). "Personas activas" usa el total real del servidor (antes contaba una página de 500). */
+  protected readonly carga = recurso(
+    () => {
+      const hoy = hoyServidor();
+      return forkJoin({
+        // Solo la página de "actividad reciente" (6 más nuevos) y el KPI con el `total` real del servidor.
+        hist: this.logs.historialPagina({ desde: hoy, hasta: hoy, tamanoPagina: 6 }),
+        activas: this.personasSvc.contar('activo'),
+        creds: this.cred.list(),
+        notifs: this.notif.list(),
+      }).pipe(
+        map(({ hist, activas, creds, notifs }) => {
+          const noLeidas = notifs.filter((n) => !n.leida);
+          return {
+            accesosHoy: String(hist.total),
+            personasActivas: String(activas),
+            credencialesEmitidas: String(creds.filter((c) => c.estado === 'activa').length),
+            alertasPendientes: String(noLeidas.length),
+            events: [...hist.items].sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1)).slice(0, 6),
+            alerts: noLeidas.slice(0, 4).map((n) => ({
+              id: n.id,
+              personaNombre: n.personaNombre ?? undefined,
+              mensaje: n.mensaje,
+              fecha: n.fecha,
+            })),
+          };
+        }),
+      );
+    },
+    VACIO,
+    'No se pudo cargar el panel de control.',
+  );
+  protected readonly loading = this.carga.cargando;
+  protected readonly accesosHoy = computed(() => this.carga.datos().accesosHoy);
+  protected readonly personasActivas = computed(() => this.carga.datos().personasActivas);
+  protected readonly alertasPendientes = computed(() => this.carga.datos().alertasPendientes);
+  protected readonly credencialesEmitidas = computed(() => this.carga.datos().credencialesEmitidas);
+  protected readonly events = computed(() => this.carga.datos().events);
+  protected readonly alerts = computed(() => this.carga.datos().alerts);
 
   ngOnInit(): void {
-    const hoy = hoyServidor();
-    const done = () => {
-      if (
-        this.accesosHoy() !== '—' &&
-        this.personasActivas() !== '—' &&
-        this.alertasPendientes() !== '—' &&
-        this.credencialesEmitidas() !== '—'
-      ) {
-        this.loading.set(false);
-      }
-    };
-
-    // Se pide solo la página de "actividad reciente" (6 más nuevos, el backend ordena por fecha/hora desc) y el
-    // KPI usa el `total` real del servidor (antes contaba filas de una página truncada a 20).
-    this.logs.historialPagina({ desde: hoy, hasta: hoy, tamanoPagina: 6 }).subscribe((page) => {
-      const rows = [...page.items].sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1));
-      this.accesosHoy.set(String(page.total));
-      this.events.set(rows.slice(0, 6));
-      done();
-    });
-    this.personasSvc.list().subscribe((ps) => {
-      this.personasActivas.set(String(ps.filter((p) => p.estado === 'activo').length));
-      done();
-    });
-    this.cred.list().subscribe((cs) => {
-      this.credencialesEmitidas.set(String(cs.length));
-      done();
-    });
-    this.notif.list().subscribe((ns) => {
-      const noLeidas = ns.filter((n) => !n.leida);
-      this.alertasPendientes.set(String(noLeidas.length));
-      this.alerts.set(
-        noLeidas.slice(0, 4).map((n) => ({
-          id: n.id,
-          personaNombre: n.personaNombre ?? undefined,
-          mensaje: n.mensaje,
-          fecha: n.fecha,
-        })),
-      );
-      done();
-    });
+    this.carga.cargar();
   }
 
   /** La hora del registro viene en hora de Guatemala: se muestra en la hora del dispositivo. */

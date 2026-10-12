@@ -6,6 +6,7 @@
 //   - "concentración inusual" se simula con 12 escaneos de ingreso frescos a la misma zona (12 >= umbral 10).
 import { strict as assert } from 'node:assert';
 import { execSync } from 'node:child_process';
+import { dpiPrueba, nombrePrueba } from './datos-prueba.mjs';
 
 const BASE = process.env.SCIAD_BASE ?? 'http://localhost:3000';
 const H = { 'Content-Type': 'application/json' };
@@ -54,7 +55,7 @@ console.log(`Sesiones OK (admin#${adminId}, seg, ger#${gerId}); sufijo=${R}, hoy
 
 // ---------- Helpers de setup (igual patrón que 2C) ----------
 async function crearPersona(sufijo) {
-  const r = await call('POST', '/api/personas', { token: A, body: { nombre: `P2D-${sufijo}-${R}`, dpiCodigo: `2DD-${sufijo}-${R}`, tipo: 1 } });
+  const r = await call('POST', '/api/personas', { token: A, body: { nombre: nombrePrueba(`P2D-${sufijo}-${R}`), dpiCodigo: dpiPrueba(), tipo: 1 } });
   assert.equal(r.status, 201, `Persona ${sufijo} no creada: ${r.status} ${JSON.stringify(r.body)}`);
   return r.body;
 }
@@ -107,7 +108,7 @@ console.log('\n== CU-06: historial de accesos ==');
   const h = await call('GET', `/api/registros-acceso?personaId=${personaH.id}`, { token: G });
   check('-> 200, paginado', h.status === 200 && h.body?.items !== undefined && h.body.total === 2, `total=${h.body?.total}`);
   check('  con las 2 filas de H (ingreso+egreso, orden desc)', h.body?.items?.length === 2
-    && h.body.items.every(x => x.personaId === +personaH.id && x.personaNombre.startsWith('P2D-H-')),
+    && h.body.items.every(x => x.personaId === +personaH.id && x.personaNombre.startsWith(nombrePrueba('P2D-H-'))),
     `tipo=${h.body?.items?.map(x => x.tipo).join(',')}`);
   const fi = await call('GET', `/api/registros-acceso?tipo=ingreso`, { token: G });
   check('  ?tipo=ingreso filtra (todas ingreso)', fi.status === 200 && fi.body.items.every(x => x.tipo === 'ingreso'));

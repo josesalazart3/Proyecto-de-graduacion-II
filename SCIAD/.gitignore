@@ -20,3 +20,6 @@ zap-reportes/
 
 # Caché de tokens JWT de las pruebas verify-*.mjs (contiene JWT reales, aunque de corta vida)
 sciad-backend/evidencia/.tokens.json
+
+# Respaldos de scripts/reset-datos (contienen datos reales: nunca versionar)
+backups/

@@ -16,6 +16,7 @@
 // ============================================================================
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { getToken } from './token-store.mjs';
+import { dpiPrueba, nombrePrueba } from './datos-prueba.mjs';
 
 // ── Parámetros ──────────────────────────────────────────────────────────────
 const N   = parseInt(process.argv.find(a => a.startsWith('--n='))?.split('=')[1] ?? '300', 10);
@@ -57,9 +58,8 @@ const zonaId = zona.body.id;
 const hoy    = new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10); // día de Guatemala (UTC-6), Fase 4
 const finVig = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
-let seqPersona = 0; // contador global: dpiCodigo único sin importar el grupo
 async function crearCredencial(tag, idx) {
-  const p = await call('POST', '/api/personas', { token: ADMIN, body: { nombre: `${tag}-${idx}-${SUF}`, dpiCodigo: `P-${seqPersona++}-${SUF}`, tipo: 1 } });
+  const p = await call('POST', '/api/personas', { token: ADMIN, body: { nombre: nombrePrueba(`${tag}-${idx}-${SUF}`), dpiCodigo: dpiPrueba(), tipo: 1 } });
   if (p.status !== 201) throw new Error(`${tag} persona ${idx}: ${p.status}`);
   const pf = await call('POST', '/api/perfiles-acceso', { token: ADMIN, body: { personaId: p.body.id, zonaId, vigenciaInicio: hoy, vigenciaFin: finVig } });
   if (pf.status !== 201) throw new Error(`${tag} perfil ${idx}: ${pf.status}`);

@@ -33,8 +33,10 @@ public sealed class PersonaRepository : IPersonaRepository
         }
 
         var total = await query.CountAsync(ct);
+        // Más recientes primero: con orden ascendente, una persona recién creada quedaba fuera de la primera página
+        // (la interfaz pide una sola página) y "no aparecía" en la lista aunque se hubiera guardado (Fase 8).
         var items = await query
-            .OrderBy(p => p.Id)
+            .OrderByDescending(p => p.Id)
             .Skip((pagina - 1) * tamanoPagina)
             .Take(tamanoPagina)
             .ToListAsync(ct);

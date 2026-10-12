@@ -9,6 +9,7 @@
 // del humano; este script es la contraparte automatizada y verificable de esa caminata.
 import { strict as assert } from 'node:assert';
 import { execSync } from 'node:child_process';
+import { dpiPrueba, nombrePrueba } from './datos-prueba.mjs';
 
 const BASE = process.env.SCIAD_BASE ?? 'http://localhost:8080'; // a través de nginx del frontend
 const H = { 'Content-Type': 'application/json' };
@@ -63,7 +64,7 @@ console.log(`Sesiones OK (admin#${admin.usuarioId}, seg, ger); sufijo=${R}, hoy=
 
 // ---------- Setup compartido (igual patrón que 2C/2D) ----------
 async function crearPersona(sufijo, tipo = 1) {
-  const r = await call('POST', '/api/personas', { token: A, body: { nombre: `P3R-${sufijo}-${R}`, dpiCodigo: `F3D-${sufijo}-${R}`, tipo } });
+  const r = await call('POST', '/api/personas', { token: A, body: { nombre: nombrePrueba(`P3R-${sufijo}-${R}`), dpiCodigo: dpiPrueba(), tipo } });
   assert.equal(r.status, 201, `Persona ${sufijo}: ${r.status} ${JSON.stringify(r.body)}`);
   return r.body;
 }
@@ -123,7 +124,7 @@ console.log('== Administrador ==');
   const pager = await call('GET', '/api/personas?tamanoPagina=500', { token: A });
   check('personas: GET /personas → 200', pager.status === 200);
   const p = await crearPersona('A');
-  const put = await call('PUT', `/api/personas/${p.id}`, { token: A, body: { nombre: `P3R-A-${R}-edit`, dpiCodigo: `F3D-A-${R}`, tipo: 1 } });
+  const put = await call('PUT', `/api/personas/${p.id}`, { token: A, body: { nombre: nombrePrueba(`P3R-A-${R}-edit`), dpiCodigo: p.dpiCodigo, tipo: 1 } });
   check('personas: PUT /personas/{id} → 200', put.status === 200);
   const togg = await call('PATCH', `/api/personas/${p.id}/estado`, { token: A, body: { estado: 'inactivo' } });
   check('personas: PATCH /personas/{id}/estado → 200', togg.status === 200);
@@ -291,10 +292,10 @@ console.log('\n== Gerencia / Auditoría ==');
 // ================================================================
 console.log('\n== Persistencia (consulta directa a PostgreSQL) ==');
 {
-  const nPers = await PSQL(`SELECT count(*) FROM personas WHERE dpi_codigo LIKE 'F3D-%${R}'`);
+  const nPers = await PSQL(`SELECT count(*) FROM personas WHERE nombre LIKE '${nombrePrueba('P3R-')}%${nombrePrueba(R)}%'`);
   const nZon = await PSQL(`SELECT count(*) FROM zonas_acceso WHERE nombre LIKE 'Z3-%${R}'`);
   const nUsr = await PSQL(`SELECT count(*) FROM usuarios WHERE correo LIKE 'u3-${R}%'`);
-  const nCred = await PSQL(`SELECT count(*) FROM credenciales_qr c JOIN personas p ON p.id = c.persona_id WHERE p.dpi_codigo LIKE 'F3D-%${R}'`);
+  const nCred = await PSQL(`SELECT count(*) FROM credenciales_qr c JOIN personas p ON p.id = c.persona_id WHERE p.nombre LIKE '${nombrePrueba('P3R-')}%${nombrePrueba(R)}%'`);
   check(`personas guardadas en BD (creadas vía API, sufijo ${R}) → ${nPers}`, +nPers >= 5);
   check(`zonas guardadas en BD (creadas vía API, sufijo ${R}) → ${nZon}`, +nZon >= 4);
   check(`usuarios guardados en BD → ${nUsr}`, +nUsr >= 1);

@@ -126,18 +126,18 @@ namespace Sciad.Infrastructure.Migrations
 
             modelBuilder.Entity("Sciad.Domain.Entities.Notificacion", b =>
                 {
-                    b.Property<DateTime>("Fecha")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                        .HasColumnName("fecha");
-
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Fecha")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
                     b.Property<bool>("Leida")
                         .ValueGeneratedOnAdd()
@@ -258,6 +258,8 @@ namespace Sciad.Infrastructure.Migrations
 
                     b.ToTable("personas", "public", t =>
                         {
+                            t.HasCheckConstraint("CK_personas_dpi_codigo", "dpi_codigo ~ '^[0-9]{13}$'");
+
                             t.HasCheckConstraint("CK_personas_tipo", "tipo IN (1, 2)");
                         });
                 });
@@ -506,7 +508,10 @@ namespace Sciad.Infrastructure.Migrations
                     b.HasIndex("Estado")
                         .HasDatabaseName("ix_zonas_acceso_estado");
 
-                    b.ToTable("zonas_acceso", "public");
+                    b.ToTable("zonas_acceso", "public", t =>
+                        {
+                            t.HasCheckConstraint("CK_zonas_acceso_estado", "estado IN ('activo', 'inactivo')");
+                        });
                 });
 
             modelBuilder.Entity("Sciad.Domain.Entities.Auditoria", b =>

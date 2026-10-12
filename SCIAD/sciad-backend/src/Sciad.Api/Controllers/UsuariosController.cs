@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sciad.Api.Common;
@@ -5,6 +7,7 @@ using Sciad.Application.Dtos.Auth;
 using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.Usuarios;
 using Sciad.Application.Interfaces;
+using Sciad.Application.Services;
 
 namespace Sciad.Api.Controllers;
 
@@ -21,17 +24,24 @@ public sealed class UsuariosController : ControllerBase
         _usuarios = usuarios;
     }
 
-    /// <summary>Lista paginada de usuarios (cada página).</summary>
+    /// <summary>Lista paginada de usuarios; <c>estado</c>: <c>activo</c> (por defecto), <c>inactivo</c> o <c>todos</c> (Fase 8.4).</summary>
     [HttpGet]
     [ProducesResponseType(typeof(PaginadoDto<UsuarioDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Listar(
+        [FromQuery] string? estado = null,
         [FromQuery] int pagina = 1,
         [FromQuery] int tamanoPagina = 20,
         CancellationToken ct = default)
     {
-        var respuesta = await _usuarios.ListarAsync(pagina, tamanoPagina, ct);
+        if (!FiltroEstado.Interpretar(estado, out var filtro, out var mensaje))
+        {
+            return ApiProblem.BadRequest(mensaje, CodigosError.Validacion);
+        }
+
+        var respuesta = await _usuarios.ListarAsync(filtro, pagina, tamanoPagina, ct);
         return Ok(respuesta.Dato);
     }
 
@@ -67,6 +77,15 @@ public sealed class UsuariosController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> CambiarEstado(int id, [FromBody] CambiarEstadoRequest request, CancellationToken ct)
     {
+        // Fase 8.4: un administrador no puede deshabilitar su propia cuenta (el servicio impide además dejar el sistema
+        // sin ningún administrador activo).
+        var actual = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (int.TryParse(actual, out var actualId) && actualId == id
+            && string.Equals(request.Estado?.Trim(), FiltroEstado.Inactivo, StringComparison.OrdinalIgnoreCase))
+        {
+            return ApiProblem.BadRequest("No puede deshabilitar su propia cuenta.", CodigosError.Validacion);
+        }
+
         var resultado = await _usuarios.CambiarEstadoAsync(id, request, ct);
         return resultado.Exitoso ? Ok(resultado.Dato) : ApiProblem.FromServicio(resultado);
     }

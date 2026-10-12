@@ -72,6 +72,9 @@ async function crearVideo(file, segs) {
 // ───────────── 1) Datos de prueba por la API ─────────────
 console.log(`\nE2E REAL → ${BASE}\n\n[1] Preparación de datos por la API`);
 const run = Date.now().toString().slice(-8);
+// Fase 8: el nombre de persona no admite dígitos y el DPI es de 13 dígitos (departamento 01–22).
+const alfa = (s) => String(s).replace(/\d/g, (d) => 'ABCDEFGHIJ'[d]);
+const dpiDe = (k) => `${run}${'ABCD'.indexOf(k) + 1}0101`; // 8 + 1 + 4 = 13 dígitos, departamento 01
 const admin = await login('admin@sciad.gt');
 let zonas = items((await api('GET', '/zonas-acceso', { token: admin })).body);
 let zona = zonas.find((z) => z.estado === 'activo');
@@ -79,14 +82,14 @@ if (!zona) zona = (await api('POST', '/zonas-acceso', { token: admin, body: { no
 console.log(`  zona de la prueba: ${zona.nombre} (id ${zona.id}) — es la que la pantalla preselecciona (primera activa)`);
 
 const defs = [
-  { k: 'A', nombre: `ZZ E2E Valido ${run}`, perfil: [-30, 365] },
-  { k: 'B', nombre: `ZZ E2E Vencido ${run}`, perfil: [-400, -35] },
-  { k: 'C', nombre: `ZZ E2E Revocada ${run}`, perfil: [-30, 365], revocar: true },
-  { k: 'D', nombre: `ZZ E2E SinPerfil ${run}`, perfil: null },
+  { k: 'A', nombre: `ZZ Prueba Valido ${alfa(run)}`, perfil: [-30, 365] },
+  { k: 'B', nombre: `ZZ Prueba Vencido ${alfa(run)}`, perfil: [-400, -35] },
+  { k: 'C', nombre: `ZZ Prueba Revocada ${alfa(run)}`, perfil: [-30, 365], revocar: true },
+  { k: 'D', nombre: `ZZ Prueba SinPerfil ${alfa(run)}`, perfil: null },
 ];
 const P = {};
 for (const d of defs) {
-  const per = (await api('POST', '/personas', { token: admin, body: { nombre: d.nombre, dpiCodigo: `E2E-${run}-${d.k}`, tipo: 1 } })).body;
+  const per = (await api('POST', '/personas', { token: admin, body: { nombre: d.nombre, dpiCodigo: dpiDe(d.k), tipo: 1 } })).body;
   if (d.perfil) await api('POST', '/perfiles-acceso', { token: admin, body: { personaId: +per.id, zonaId: +zona.id, vigenciaInicio: fechaGT(d.perfil[0]), vigenciaFin: fechaGT(d.perfil[1]) } });
   const cred = (await api('POST', `/credenciales/${per.id}/generar`, { token: admin })).body;
   if (d.revocar) await api('POST', `/credenciales/${cred.id}/revocar`, { token: admin, body: { motivo: 'E2E' } });

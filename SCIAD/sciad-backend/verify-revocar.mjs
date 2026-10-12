@@ -1,6 +1,7 @@
 // Verificación puntual del endpoint POST /api/credenciales/{id}/revocar (Fase 3, Task #24).
 // Cada corrida usa sufijos únicos para poder repetirse. Uso: node verify-revocar.mjs
 import { strict as assert } from 'node:assert';
+import { dpiPrueba, nombrePrueba } from './datos-prueba.mjs';
 
 const BASE = process.env.SCIAD_BASE ?? 'http://localhost:3000';
 const H = { 'Content-Type': 'application/json' };
@@ -34,7 +35,7 @@ const G = await login('gerencia@sciad.gt', 'sciad123');
 console.log(`Sufijo=${R}\n`);
 
 // Setup: persona activa + credencial activa.
-const p = await call('POST', '/api/personas', { token: A, body: { nombre: `PRV-${R}`, dpiCodigo: `RV-${R}`, tipo: 1 } });
+const p = await call('POST', '/api/personas', { token: A, body: { nombre: nombrePrueba(`PRV-${R}`), dpiCodigo: dpiPrueba(), tipo: 1 } });
 assert.equal(p.status, 201, `persona no creada ${p.status}`);
 const gen = await call('POST', `/api/credenciales/${p.body.id}/generar`, { token: A });
 assert.equal(gen.status, 201, `credencial no generada ${gen.status}`);

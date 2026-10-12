@@ -39,6 +39,8 @@ import {
   decodificarImagen,
   QrCameraScanner,
 } from '../../core/util/qr-camera';
+import { recurso } from '../../core/util/recurso';
+import { tap } from 'rxjs';
 
 interface EscanerResultado {
   ok: boolean;
@@ -81,7 +83,14 @@ const TITULOS_ERROR: Record<string, string> = {
             <option [value]="z.id">{{ z.nombre }}</option>
           }
         </select>
-        @if (zonas().length > 0 && zonaOptions().length === 0) {
+        @if (cargaZonas.cargando()) {
+          <p class="hint">Cargando zonas…</p>
+        } @else if (cargaZonas.error(); as e) {
+          <div class="zona-error" role="alert">
+            <span>{{ e }}</span>
+            <button sci-btn variant="secondary" size="sm" iconName="refresh" type="button" (click)="cargaZonas.cargar()">Reintentar</button>
+          </div>
+        } @else if (zonaOptions().length === 0) {
           <p class="hint">No hay zonas activas. Actívalas desde administración.</p>
         }
       </div>
@@ -212,6 +221,7 @@ const TITULOS_ERROR: Record<string, string> = {
       :host { display: block; }
       .scan { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
       .zona-row { display: flex; flex-direction: column; gap: 6px; }
+      .zona-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--sciad-danger-soft); color: var(--sciad-danger); font-size: 13px; font-weight: 500; }
       .uppercase-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-subtle); }
       .hint { font-size: 12px; color: var(--text-subtle); }
 
@@ -288,6 +298,10 @@ export class ScanComponent implements OnInit, AfterViewInit, OnDestroy {
   private lastInvalidAt = 0;
   private audio: AudioContext | null = null;
   private resumeOnVisible = false;
+  /** Fase 8.5: el componente ya se destruyó (el usuario salió de Escanear): nunca volver a encender la cámara. */
+  private destruido = false;
+  /** Al volver a la pestaña había un resultado en pantalla: se reinicia la cámara cuando ese resultado se cierre. */
+  private reiniciarTrasResultado = false;
 
   protected readonly cam = signal<CamState>('idle');
   protected readonly camError = signal<string | null>(null);
@@ -296,7 +310,13 @@ export class ScanComponent implements OnInit, AfterViewInit, OnDestroy {
   protected readonly linterna = signal(false);
   protected readonly linternaOn = signal(false);
   protected readonly loading = signal(false);
-  protected readonly zonas = signal<Zona[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. Al llegar, preselecciona la zona guardada. */
+  protected readonly cargaZonas = recurso(
+    () => this.zonasSvc.list().pipe(tap((zs) => this.preseleccionarZona(zs))),
+    [] as Zona[],
+    'No se pudieron cargar las zonas.',
+  );
+  protected readonly zonas = this.cargaZonas.datos;
   protected readonly result = signal<EscanerResultado | null>(null);
   protected readonly recientes = signal<Reciente[]>([]);
 
@@ -315,21 +335,19 @@ export class ScanComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    this.zonasSvc.list().subscribe({
-      next: (zs) => {
-        this.zonas.set(zs);
-        const activas = zs.filter((z) => z.estado === 'activo');
-        let guardada: string | null = null;
-        try {
-          guardada = localStorage.getItem(ZONA_KEY);
-        } catch {
-          guardada = null;
-        }
-        const elegida = activas.find((z) => z.id === guardada) ?? activas[0];
-        if (elegida) this.form.controls.zonaId.setValue(String(elegida.id));
-      },
-      error: () => this.toast.error('Error', 'No se pudieron cargar las zonas.'),
-    });
+    this.cargaZonas.cargar();
+  }
+
+  private preseleccionarZona(zs: Zona[]): void {
+    const activas = zs.filter((z) => z.estado === 'activo');
+    let guardada: string | null = null;
+    try {
+      guardada = localStorage.getItem(ZONA_KEY);
+    } catch {
+      guardada = null;
+    }
+    const elegida = activas.find((z) => z.id === guardada) ?? activas[0];
+    if (elegida && !this.form.controls.zonaId.value) this.form.controls.zonaId.setValue(String(elegida.id));
   }
 
   ngAfterViewInit(): void {
@@ -338,28 +356,58 @@ export class ScanComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.scanner?.stop();
+    this.destruido = true;
+    this.resumeOnVisible = false;
+    this.reiniciarTrasResultado = false;
+    this.scanner?.stop(); // también cancela un arranque pendiente (getUserMedia aún sin resolver)
+    this.scanner = null;
     if (this.resultTimer) clearTimeout(this.resultTimer);
     void this.audio?.close().catch(() => undefined);
   }
 
-  /** Libera la cámara al ocultar la pestaña (batería/privacidad) y la reanuda al volver. */
+  /**
+   * Libera la cámara al ocultar la pestaña (batería/privacidad), también si aún se estaba iniciando, y la reanuda al
+   * volver solo si se sigue en Escanear y no hay un resultado en pantalla (si lo hay, al cerrarse).
+   */
   @HostListener('document:visibilitychange')
   onVisibility(): void {
-    if (document.hidden) {
-      if (this.cam() === 'live') {
-        this.resumeOnVisible = true;
-        this.scanner?.stop();
-        this.cam.set('idle');
-      }
-    } else if (this.resumeOnVisible) {
-      this.resumeOnVisible = false;
-      void this.iniciar();
+    if (document.hidden) this.suspender();
+    else this.reanudar();
+  }
+
+  /** Salir de la página / cerrar la pestaña / bfcache: la cámara se apaga siempre. */
+  @HostListener('window:pagehide')
+  onPageHide(): void {
+    this.suspender();
+  }
+
+  /** Volver desde el bfcache (atrás/adelante) con la pantalla de Escanear. */
+  @HostListener('window:pageshow', ['$event'])
+  onPageShow(ev: PageTransitionEvent): void {
+    if (ev.persisted && !document.hidden) this.reanudar();
+  }
+
+  private suspender(): void {
+    if (this.cam() === 'live' || this.cam() === 'starting') {
+      this.resumeOnVisible = true;
+      this.scanner?.stop();
+      this.cam.set('idle');
+      this.linterna.set(false);
     }
   }
 
+  private reanudar(): void {
+    if (!this.resumeOnVisible || this.destruido) return;
+    this.resumeOnVisible = false;
+    if (this.result()) {
+      this.reiniciarTrasResultado = true;
+      return;
+    }
+    void this.iniciar();
+  }
+
   protected async iniciar(deviceId?: string): Promise<void> {
-    if (this.cam() === 'starting') return;
+    if (this.destruido || this.cam() === 'starting') return;
     this.cam.set('starting');
     this.camError.set(null);
     this.camErrorCode.set(null);
@@ -369,19 +417,32 @@ export class ScanComponent implements OnInit, AfterViewInit, OnDestroy {
         this.scanner = new QrCameraScanner(this.videoRef().nativeElement, (t) => this.onLectura(t));
       }
       await this.scanner.start(deviceId);
+      if (this.destruido) {
+        this.scanner?.stop(); // salió de la pantalla justo al terminar el arranque
+        return;
+      }
       this.cam.set('live');
       this.linterna.set(this.scanner.linterna);
       this.linternaOn.set(false);
       this.camaras.set(await QrCameraScanner.camaras());
     } catch (e) {
       const ce = e instanceof CamaraError ? e : new CamaraError('UNKNOWN', CAMARA_MENSAJES.UNKNOWN);
+      if (this.destruido) return;
+      if (ce.code === 'ABORTED') {
+        // Se apagó a propósito mientras se iniciaba (pestaña oculta, botón Apagar): no es un error.
+        if (this.cam() === 'starting') this.cam.set('idle');
+        return;
+      }
       this.cam.set('error');
       this.camErrorCode.set(ce.code);
       this.camError.set(ce.message);
     }
   }
 
+  /** Botón "Apagar cámara": la apaga de verdad (pistas detenidas) y no se reenciende sola al volver a la pestaña. */
   protected detener(): void {
+    this.resumeOnVisible = false;
+    this.reiniciarTrasResultado = false;
     this.scanner?.stop();
     this.cam.set('idle');
     this.linterna.set(false);
@@ -529,6 +590,11 @@ export class ScanComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     this.resultTimer = setTimeout(() => {
       this.result.set(null);
+      if (this.reiniciarTrasResultado && !this.destruido && !document.hidden) {
+        this.reiniciarTrasResultado = false;
+        void this.iniciar();
+        return;
+      }
       this.scanner?.resume();
     }, RESULT_MS);
   }

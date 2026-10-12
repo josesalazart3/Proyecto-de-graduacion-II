@@ -52,7 +52,8 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<Sciad.Api.Background.CierreDiarioHostedService>();
 
 // Respuesta 400 de validación de modelo también con Problem Details consistente (code + message).
-builder.Services.AddControllers()
+// Fase 8: ningún texto de la solicitud puede traer caracteres de control (→ 400 con el mismo formato).
+builder.Services.AddControllers(o => o.Filters.Add<RechazarCaracteresControlFilter>())
     .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = context =>
     {
         var mensaje = context.ModelState.Values

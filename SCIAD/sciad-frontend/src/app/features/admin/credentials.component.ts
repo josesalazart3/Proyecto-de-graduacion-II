@@ -15,6 +15,8 @@ import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
 import { QrImage } from '../../shared/ui/qr-image.component';
 import { descargarQrPng, imprimirGafete } from '../../core/util/qr';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
 
 function badgeFor(estado: string): StatusKey {
   return estado === 'activa' ? 'activo' : 'revocado';
@@ -23,7 +25,7 @@ function badgeFor(estado: string): StatusKey {
 @Component({
   selector: 'app-admin-credentials',
   standalone: true,
-  imports: [
+  imports: [LoadError, 
     ReactiveFormsModule,
     Button,
     Icon,
@@ -55,6 +57,8 @@ function badgeFor(estado: string): StatusKey {
                 <tr class="sci-skel-row">@for (c of [1,2,3,4,5]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table>
+          } @else if (carga.error(); as e) {
+            <sci-load-error [message]="e" (retry)="carga.cargar()" />
           } @else if (credenciales().length === 0) {
             <sci-empty-state icon="qr" title="Sin credenciales" message="Aún no hay credenciales emitidas.">
               <button sci-btn variant="primary" size="sm" iconName="plus" (click)="openCreate()">Generar primera</button>
@@ -190,9 +194,11 @@ export class CredentialsComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly toast = inject(ToastService);
 
-  protected readonly loading = signal(true);
   protected readonly saving = signal(false);
-  protected readonly credenciales = signal<Credencial[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.list(), [] as Credencial[], 'No se pudieron cargar las credenciales.');
+  protected readonly credenciales = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
   protected readonly personasList = signal<Persona[]>([]);
   protected readonly createOpen = signal(false);
   protected readonly revokeOpen = signal(false);
@@ -222,11 +228,7 @@ export class CredentialsComponent implements OnInit {
   }
 
   private load(): void {
-    this.loading.set(true);
-    this.service.list().subscribe({
-      next: (list) => { this.credenciales.set(list); this.loading.set(false); },
-      error: () => { this.loading.set(false); this.toast.error('Error', 'No se pudieron cargar las credenciales.'); },
-    });
+    this.carga.cargar();
   }
 
   protected personaTipo(personaId: string): string {

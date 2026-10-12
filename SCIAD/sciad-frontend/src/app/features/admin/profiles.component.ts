@@ -12,11 +12,13 @@ import { Modal } from '../../shared/ui/modal.component';
 import { SciInput, SciSelect } from '../../shared/ui/field.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
 
 @Component({
   selector: 'app-admin-profiles',
   standalone: true,
-  imports: [
+  imports: [LoadError, 
     ReactiveFormsModule,
     Button,
     Icon,
@@ -46,6 +48,8 @@ import { ToastService } from '../../shared/ui/toast.service';
                 <tr class="sci-skel-row">@for (c of [1,2,3,4]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table></div>
+          } @else if (carga.error(); as e) {
+            <sci-load-error [message]="e" (retry)="carga.cargar()" />
           } @else if (perfiles().length === 0) {
             <sci-empty-state icon="id-card" title="Sin asignaciones" message="Asigna una persona a una zona para permitirle el acceso.">
               <button sci-btn variant="primary" size="sm" iconName="plus" (click)="openCreate()">Nueva asignación</button>
@@ -116,9 +120,11 @@ export class ProfilesComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly toast = inject(ToastService);
 
-  protected readonly loading = signal(true);
   protected readonly saving = signal(false);
-  protected readonly perfiles = signal<PerfilAcceso[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.list(), [] as PerfilAcceso[], 'No se pudieron cargar las asignaciones.');
+  protected readonly perfiles = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
   protected readonly personasList = signal<Persona[]>([]);
   protected readonly zonasList = signal<Zona[]>([]);
   protected readonly modalOpen = signal(false);
@@ -146,13 +152,9 @@ export class ProfilesComponent implements OnInit {
   }
 
   private load(): void {
-    this.loading.set(true);
-    this.service.list().subscribe({
-      next: (list) => { this.perfiles.set(list); this.loading.set(false); },
-      error: () => { this.loading.set(false); this.toast.error('Error', 'No se pudieron cargar las asignaciones.'); },
-    });
-    this.personasSvc.list().subscribe((ps) => this.personasList.set(ps));
-    this.zonas.list().subscribe((zs) => this.zonasList.set(zs));
+    this.carga.cargar();
+    this.personasSvc.list('todos').subscribe({ next: (ps) => this.personasList.set(ps), error: () => this.toast.error('Error', 'No se pudieron cargar las personas.') });
+    this.zonas.list('todos').subscribe({ next: (zs) => this.zonasList.set(zs), error: () => this.toast.error('Error', 'No se pudieron cargar las zonas.') });
   }
 
   protected personaTipo(personaId: string): string {
@@ -188,6 +190,15 @@ export class ProfilesComponent implements OnInit {
     if (v.vigenciaInicio! > v.vigenciaFin!) {
       this.form.controls.vigenciaFin.setErrors({ vigencia: 'La vigencia final debe ser igual o posterior a la inicial.' });
       return;
+    }
+    // Fase 8: sin fechas absurdas (mismo rango que el backend).
+    for (const campo of ['vigenciaInicio', 'vigenciaFin'] as const) {
+      const anio = Number(String(v[campo]).slice(0, 4));
+      if (!(anio >= 2020 && anio <= 2100)) {
+        this.form.controls[campo].setErrors({ vigencia: 'La fecha debe estar entre los años 2020 y 2100.' });
+        this.form.controls[campo].markAsTouched();
+        return;
+      }
     }
     this.saving.set(true);
     this.service.create({

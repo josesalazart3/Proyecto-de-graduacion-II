@@ -29,10 +29,23 @@ public sealed class UsuarioRepository : IUsuarioRepository
             .FirstOrDefaultAsync(u => u.Id == id, ct);
     }
 
-    public async Task<(IReadOnlyList<Usuario> Items, int Total)> ListarPaginadoAsync(
+    public Task<(IReadOnlyList<Usuario> Items, int Total)> ListarPaginadoAsync(
         int pagina, int tamanoPagina, CancellationToken ct = default)
+        => ListarPaginadoAsync(null, pagina, tamanoPagina, ct);
+
+    public Task<int> ContarAdministradoresActivosAsync(int? excluirId = null, CancellationToken ct = default)
+        => _db.Usuarios.CountAsync(
+            u => u.Estado == "activo" && u.Rol.Codigo == "ADMIN" && (excluirId == null || u.Id != excluirId), ct);
+
+    public async Task<(IReadOnlyList<Usuario> Items, int Total)> ListarPaginadoAsync(
+        string? estado, int pagina, int tamanoPagina, CancellationToken ct = default)
     {
-        var query = _db.Usuarios.AsNoTracking().Include(u => u.Rol);
+        IQueryable<Usuario> query = _db.Usuarios.AsNoTracking().Include(u => u.Rol);
+        if (!string.IsNullOrWhiteSpace(estado))
+        {
+            query = query.Where(u => u.Estado == estado);
+        }
+
         var total = await query.CountAsync(ct);
         var items = await query
             .OrderBy(u => u.Id)

@@ -157,7 +157,7 @@ public sealed class UsuariosServiceTests
     [Fact]
     public async Task Actualizar_Exito_ActualizaRolYNormalizaCorreo()
     {
-        var existente = TestData.UsuarioRol("ADMIN", 9);
+        var existente = TestData.UsuarioRol("SEGURIDAD", 9);
         _usuarios.Setup(m => m.FindByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(existente);
         _usuarios.Setup(m => m.ExisteCorreoAsync(It.IsAny<string>(), 9, It.IsAny<CancellationToken>())).ReturnsAsync(false);
         _usuarios.Setup(m => m.FindRolByCodigoAsync("GERENCIA", It.IsAny<CancellationToken>()))

@@ -4,6 +4,7 @@ using Sciad.Api.Common;
 using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.Zonas;
 using Sciad.Application.Interfaces;
+using Sciad.Application.Services;
 
 namespace Sciad.Api.Controllers;
 
@@ -23,13 +24,22 @@ public sealed class ZonasAccesoController : ControllerBase
         _zonas = zonas;
     }
 
-    /// <summary>Lista todas las zonas de acceso (cualquier rol autenticado).</summary>
+    /// <summary>
+    /// Lista las zonas de acceso (cualquier rol autenticado). <c>estado</c>: <c>activo</c> (por defecto), <c>inactivo</c>
+    /// o <c>todos</c> (Fase 8.4): el escáner y los perfiles nuevos solo ven zonas activas.
+    /// </summary>
     [HttpGet]
     [Authorize(Policy = "RequireZonaLectura")]
     [ProducesResponseType(typeof(IReadOnlyList<ZonaDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> Listar(CancellationToken ct)
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Listar([FromQuery] string? estado = null, CancellationToken ct = default)
     {
-        var resultado = await _zonas.ListarAsync(ct);
+        if (!FiltroEstado.Interpretar(estado, out var filtro, out var mensaje))
+        {
+            return ApiProblem.BadRequest(mensaje, CodigosError.Validacion);
+        }
+
+        var resultado = await _zonas.ListarAsync(filtro, ct);
         return Ok(resultado.Dato);
     }
 

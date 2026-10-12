@@ -48,6 +48,13 @@ public sealed class PerfilesAccesoService : IPerfilesAccesoService
                 CodigosError.Validacion, "La vigencia final no puede ser anterior a la inicial.");
         }
 
+        // Fase 8: sin fechas absurdas (año fuera de 2020–2100).
+        if (req.VigenciaInicio.Year is < 2020 or > 2100 || req.VigenciaFin.Year is < 2020 or > 2100)
+        {
+            return ServicioResultado<PerfilAccesoDto>.Fallo(
+                CodigosError.Validacion, "Las fechas de vigencia deben estar entre los años 2020 y 2100.");
+        }
+
         var persona = await _personas.FindByIdAsync(req.PersonaId, ct);
         if (persona is null)
         {

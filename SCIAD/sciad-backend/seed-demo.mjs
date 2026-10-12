@@ -1,6 +1,10 @@
 // Datos de demostración de SCIAD (Fase 3) — crea, POR LA API REAL, zonas, personas, perfiles y credenciales
 // para poder probar el escaneo de inmediato, y genera una hoja con los QR (demo-gafetes.html).
 //
+// HERRAMIENTA MANUAL Y OPCIONAL (Fase 8): NO se ejecuta sola — ni al arrancar el backend ni con docker compose.
+// Solo crea datos si alguien la corre a mano. Para empezar limpio con datos reales: scripts/reset-datos.(ps1|sh).
+// Sus DPI son de 13 dígitos válidos (departamento 01–22), como exige la validación de personas.
+//
 // Uso:   node seed-demo.mjs                       (API en http://localhost:3000, la del docker-compose de desarrollo)
 //        SCIAD_BASE=http://localhost:8080 node seed-demo.mjs     (a través de nginx/frontend)
 //
@@ -45,17 +49,17 @@ const ZONAS = [
 const VIGENTE = { ini: -30, fin: 365 };
 const VENCIDO = { ini: -400, fin: -35 };
 const PERSONAS = [
-  { dpi: 'DEMO-0001', nombre: 'Juan Pérez López', tipo: 1, escenario: 'Acceso normal en Entrada Principal y Oficinas',
+  { dpi: '1234567890101', nombre: 'Juan Pérez López', tipo: 1, escenario: 'Acceso normal en Entrada Principal y Oficinas',
     esperado: '✅ Autorizado (ingreso; al volver a escanear: egreso)', perfiles: [['Entrada Principal', VIGENTE], ['Oficinas', VIGENTE]] },
-  { dpi: 'DEMO-0002', nombre: 'María Fernanda Ruiz', tipo: 1, escenario: 'Acceso total, incluida la Sala de Servidores',
+  { dpi: '2345678910108', nombre: 'María Fernanda Ruiz', tipo: 1, escenario: 'Acceso total, incluida la Sala de Servidores',
     esperado: '✅ Autorizado en las 3 zonas', perfiles: [['Entrada Principal', VIGENTE], ['Oficinas', VIGENTE], ['Sala de Servidores', VIGENTE]] },
-  { dpi: 'DEMO-0003', nombre: 'Carlos Méndez Soto', tipo: 1, escenario: 'Perfil de acceso VENCIDO',
+  { dpi: '3456789120116', nombre: 'Carlos Méndez Soto', tipo: 1, escenario: 'Perfil de acceso VENCIDO',
     esperado: '❌ Fuera de vigencia (y genera notificación a Gerencia)', perfiles: [['Entrada Principal', VENCIDO]] },
-  { dpi: 'DEMO-0004', nombre: 'Ana Lucía Castillo', tipo: 1, escenario: 'Credencial REVOCADA (extraviada)',
+  { dpi: '4567891230122', nombre: 'Ana Lucía Castillo', tipo: 1, escenario: 'Credencial REVOCADA (extraviada)',
     esperado: '❌ Credencial revocada (y genera notificación a Gerencia)', perfiles: [['Entrada Principal', VIGENTE]], revocar: 'Demo: credencial extraviada' },
-  { dpi: 'DEMO-0005', nombre: 'Roberto Aguilar', tipo: 2, escenario: 'Visitante solo con acceso a Entrada Principal',
+  { dpi: '5678912340301', nombre: 'Roberto Aguilar', tipo: 2, escenario: 'Visitante solo con acceso a Entrada Principal',
     esperado: '✅ En Entrada Principal · ❌ Zona no autorizada en Oficinas', perfiles: [['Entrada Principal', VIGENTE]] },
-  { dpi: 'DEMO-0006', nombre: 'Sofía Morales', tipo: 2, escenario: 'Visitante SIN perfil de acceso',
+  { dpi: '6789123450901', nombre: 'Sofía Morales', tipo: 2, escenario: 'Visitante SIN perfil de acceso',
     esperado: '❌ Zona no autorizada', perfiles: [] },
 ];
 
@@ -68,7 +72,7 @@ if (!login.body?.token) {
 const T = login.body.token;
 
 // 1) Zonas
-const zonasExistentes = items(must(await call('GET', '/api/zonas-acceso', { token: T }), [200], 'listar zonas'));
+const zonasExistentes = items(must(await call('GET', '/api/zonas-acceso?estado=todos', { token: T }), [200], 'listar zonas'));
 const zonaId = {};
 for (const z of ZONAS) {
   let ex = zonasExistentes.find((x) => x.nombre === z.nombre);
@@ -78,7 +82,7 @@ for (const z of ZONAS) {
 }
 
 // 2) Personas, perfiles y credenciales
-const personasExistentes = items(must(await call('GET', '/api/personas?tamanoPagina=500', { token: T }), [200], 'listar personas'));
+const personasExistentes = items(must(await call('GET', '/api/personas?tamanoPagina=500&estado=todos', { token: T }), [200], 'listar personas'));
 const salida = [];
 for (const p of PERSONAS) {
   let per = personasExistentes.find((x) => x.dpiCodigo === p.dpi);

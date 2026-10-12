@@ -17,6 +17,13 @@ public interface IUsuarioRepository
     Task<(IReadOnlyList<Usuario> Items, int Total)> ListarPaginadoAsync(
         int pagina, int tamanoPagina, CancellationToken ct = default);
 
+    /// <summary>Igual, filtrando por estado (<c>null</c> = todos). Fase 8.4.</summary>
+    Task<(IReadOnlyList<Usuario> Items, int Total)> ListarPaginadoAsync(
+        string? estado, int pagina, int tamanoPagina, CancellationToken ct = default);
+
+    /// <summary>Cuántos administradores activos hay, sin contar <paramref name="excluirId"/>. Fase 8.4.</summary>
+    Task<int> ContarAdministradoresActivosAsync(int? excluirId = null, CancellationToken ct = default);
+
     /// <summary>¿Existe un usuario con este correo? Si <paramref name="excluirId"/> se pasa, lo ignora (útil para edición).</summary>
     Task<bool> ExisteCorreoAsync(string correo, int? excluirId = null, CancellationToken ct = default);
 

@@ -1,6 +1,6 @@
 // Campos de formulario con label, helper y error (ControlValueAccessor).
 // Compatibles con reactive forms: <sci-input formControlName="x" label="..." />
-import { Component, Directive, forwardRef, input } from '@angular/core';
+import { booleanAttribute, Component, Directive, forwardRef, input } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 const FIELD_STYLES = `
@@ -26,6 +26,8 @@ const FIELD_STYLES = `
   .has-error input:focus, .has-error select:focus { box-shadow: 0 0 0 3px var(--sciad-danger-soft); }
   .fld-helper { font-size: 12px; color: var(--text-subtle); }
   .fld-error { font-size: 12px; color: var(--sciad-danger); font-weight: 500; }
+  .fld-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .fld-counter { font-size: 12px; color: var(--text-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
 `;
 
 @Directive()
@@ -78,14 +80,31 @@ export abstract class FieldBase<T> implements ControlValueAccessor {
         [value]="value ?? ''"
         [placeholder]="placeholder()"
         [disabled]="disabled"
+        [attr.inputmode]="inputmode()"
+        [attr.maxlength]="maxlength()"
         [attr.aria-invalid]="error() ? 'true' : null"
-        (input)="handleInput($any($event.target).value)"
+        (input)="onInput($any($event.target))"
+        (paste)="onPaste($event)"
       />
-      @if (helper() && !error()) {
-        <span class="fld-helper">{{ helper() }}</span>
-      }
-      @if (error(); as e) {
-        <span class="fld-error">{{ e }}</span>
+      @if (counter()) {
+        <!-- Con contador (p. ej. DPI "n/13"): el contador se ve SIEMPRE, junto al error o la ayuda. -->
+        <span class="fld-foot">
+          @if (error(); as e) {
+            <span class="fld-error">{{ e }}</span>
+          } @else if (helper()) {
+            <span class="fld-helper">{{ helper() }}</span>
+          } @else {
+            <span></span>
+          }
+          <span class="fld-counter" aria-live="polite">{{ counter() }}</span>
+        </span>
+      } @else {
+        @if (helper() && !error()) {
+          <span class="fld-helper">{{ helper() }}</span>
+        }
+        @if (error(); as e) {
+          <span class="fld-error">{{ e }}</span>
+        }
       }
     </label>
   `,
@@ -93,11 +112,51 @@ export abstract class FieldBase<T> implements ControlValueAccessor {
 })
 export class SciInput extends FieldBase<string> {
   readonly type = input<string>('text');
+  readonly inputmode = input<string | null>(null);
+  readonly maxlength = input<number | null>(null);
+  /** Contador visible siempre (p. ej. "6/13"), también cuando hay error. */
+  readonly counter = input<string | null>(null);
+  /** Solo acepta dígitos: filtra lo que se teclea y lo que se pega (p. ej. un DPI con guiones o espacios). */
+  readonly soloDigitos = input(false, { transform: booleanAttribute });
+
+  protected onInput(el: HTMLInputElement): void {
+    let v = el.value;
+    if (this.soloDigitos()) {
+      const limpio = this.recortar(v.replace(/\D/g, ''));
+      if (limpio !== v) el.value = limpio;
+      v = limpio;
+    }
+    this.handleInput(v);
+  }
+
+  /** Al pegar se filtra ANTES de aplicar maxlength, para no perder dígitos si el texto trae guiones. */
+  protected onPaste(ev: ClipboardEvent): void {
+    if (!this.soloDigitos()) return;
+    ev.preventDefault();
+    const el = ev.target as HTMLInputElement;
+    const pegado = (ev.clipboardData?.getData('text') ?? '').replace(/\D/g, '');
+    const inicio = el.selectionStart ?? el.value.length;
+    const fin = el.selectionEnd ?? inicio;
+    const nuevo = this.recortar(el.value.slice(0, inicio) + pegado + el.value.slice(fin));
+    el.value = nuevo;
+    this.handleInput(nuevo);
+  }
+
+  private recortar(v: string): string {
+    const max = this.maxlength();
+    return max ? v.slice(0, max) : v;
+  }
 }
 
 @Component({
   selector: 'sci-select',
   standalone: true,
+  // Fase 8.2: sin este provider, formControlName en <sci-select> no tenía value accessor → Angular lanzaba
+  // "Cannot read properties of null (reading 'writeValue')" al crear la pantalla, el ciclo de detección de cambios
+  // (zoneless) se cortaba y la lista no se pintaba hasta otro evento. Además el valor elegido nunca llegaba al formulario.
+  providers: [
+    { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => SciSelect), multi: true },
+  ],
   template: `
     <label class="fld" [class.has-error]="error()" [class.has-label]="!!label()">
       @if (label(); as l) {

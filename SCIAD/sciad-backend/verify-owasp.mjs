@@ -20,6 +20,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import crypto from 'node:crypto';
+import { dpiPrueba, nombrePrueba } from './datos-prueba.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = (process.env.SCIAD_BASE ?? 'http://localhost:8080').replace(/\/$/, '');
@@ -122,8 +123,11 @@ const sqlR = []; for (const p of sqli) { for (const u of [`/api/personas?estado=
 ok(`${sqlR.length} inyecciones SQL en parámetros → nunca 500 ni demoras (consultas parametrizadas)`, sqlR.every((r) => r.status !== 500 && r.ms < 3000), `estados=${[...new Set(sqlR.map((r) => r.status))]}`);
 const sqlL = await login(`admin@sciad.gt' OR '1'='1`, `' OR '1'='1`); ok('SQLi en el login → 400/401/429, nunca sesión ni 500', [400, 401, 429].includes(sqlL.status) && !sqlL.json?.token, sqlL.status);
 const xss = `<img src=x onerror=alert(1)>ZZ OWASP ${R}`;
-const per = await b('/api/personas', { method: 'POST', token: T.admin, body: { nombre: xss, dpiCodigo: `OWASP-${R}`, tipo: 1 } });
-const lista = await b('/api/personas?tamanoPagina=500', { token: T.admin });
+// Fase 8: el nombre de persona ya no admite símbolos (validación) → el XSS almacenado se prueba en un texto libre (nombre de zona).
+const perXss = await b('/api/personas', { method: 'POST', token: T.admin, body: { nombre: xss, dpiCodigo: dpiPrueba(), tipo: 1 } });
+ok('XSS en el nombre de una persona → 400 (validación de datos)', perXss.status === 400, perXss.status);
+const per = await b('/api/zonas-acceso', { method: 'POST', token: T.admin, body: { nombre: xss.slice(0, 80), nivelSeguridad: 'MEDIO', nivelRiesgo: 'BAJO' } });
+const lista = await b('/api/zonas-acceso', { token: T.admin });
 ok('XSS almacenado: la API lo devuelve como DATO (application/json + nosniff), sin interpretarlo', per.status < 300 && /application\/json/.test(lista.h.get('content-type') ?? '') && lista.h.get('x-content-type-options') === 'nosniff', lista.h.get('content-type'));
 const malo = await b('/api/zonas-acceso', { method: 'POST', token: T.admin, raw: '{"nombre": "x", ' });
 ok('JSON mal formado → 400 sin stack trace', malo.status === 400 && !/\bat Sciad\.|Exception|System\./.test(malo.text), `${malo.status} ${malo.text.slice(0, 60)}`);
@@ -131,7 +135,7 @@ const nul = await b('/api/zonas-acceso', { method: 'POST', token: T.admin, body:
 ok('carácter nulo en un texto → no provoca 500', nul.status !== 500, nul.status);
 const grande = await call('POST', `${API || BASE}/api/auth/login`, { raw: JSON.stringify({ email: 'x'.repeat(90000), password: 'y' }) });
 ok('cuerpo de 90 KB → 413 (límite de tamaño)', grande.status === 413, grande.status);
-if (per.json?.id) await b(`/api/personas/${per.json.id}/estado`, { method: 'PATCH', token: T.admin, body: { estado: 'inactivo' } });
+if (per.json?.id) await b(`/api/zonas-acceso/${per.json.id}/estado`, { method: 'PATCH', token: T.admin, body: { estado: 'inactivo' } });
 
 // ───────────────────────────────────────── A04 ─────────────────────────────────────────
 head('A04 · Diseño inseguro');
@@ -141,7 +145,7 @@ const e2 = await b('/api/registros-acceso', { method: 'POST', token: T.seg, body
 ok('token con formato inválido → 400', e2.status === 400, e2.status);
 const e3 = await b('/api/registros-acceso', { method: 'POST', token: T.seg, body: { token: 'f'.repeat(64), zonaId: -1 } });
 ok('zona inválida → 4xx (no 500)', e3.status >= 400 && e3.status < 500, e3.status);
-ok('mass-assignment: un campo extra «rol»/«estado» en crear persona no cambia nada inesperado', (await b('/api/personas', { method: 'POST', token: T.admin, body: { nombre: `ZZ OWASP MA ${R}`, dpiCodigo: `OWASP-MA-${R}`, tipo: 1, estado: 'inactivo', id: 1, rol: 'ADMIN' } })).status !== 500);
+ok('mass-assignment: un campo extra «rol»/«estado» en crear persona no cambia nada inesperado', (await b('/api/personas', { method: 'POST', token: T.admin, body: { nombre: nombrePrueba(`ZZ OWASP MA ${R}`), dpiCodigo: dpiPrueba(), tipo: 1, estado: 'inactivo', id: 1, rol: 'ADMIN' } })).status !== 500);
 info('límite global por IP (1500/min) y por login (5/5 min): ver bloque de fuerza bruta al final');
 
 // ───────────────────────────────────────── A05 ─────────────────────────────────────────

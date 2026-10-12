@@ -46,15 +46,21 @@ public sealed class PersonasService : IPersonasService
 
     public async Task<ServicioResultado<PersonaDto>> CrearAsync(CrearPersonaRequest req, CancellationToken ct = default)
     {
-        if (await _personas.ExisteDpiAsync(req.DpiCodigo, null, ct))
+        var error = Validar(req.Nombre, req.DpiCodigo, req.Tipo, out var nombre, out var dpi);
+        if (error is not null)
+        {
+            return ServicioResultado<PersonaDto>.Fallo(CodigosError.Validacion, error);
+        }
+
+        if (await _personas.ExisteDpiAsync(dpi, null, ct))
         {
             return ServicioResultado<PersonaDto>.Fallo(CodigosError.Conflicto, "Ya existe una persona con ese DPI.");
         }
 
         var persona = new Persona
         {
-            Nombre = req.Nombre.Trim(),
-            DpiCodigo = req.DpiCodigo.Trim(),
+            Nombre = nombre,
+            DpiCodigo = dpi,
             Tipo = req.Tipo,
             Estado = "activo",
         };
@@ -73,13 +79,19 @@ public sealed class PersonasService : IPersonasService
             return ServicioResultado<PersonaDto>.Fallo(CodigosError.NoEncontrado, "Persona no encontrada.");
         }
 
-        if (await _personas.ExisteDpiAsync(req.DpiCodigo, id, ct))
+        var error = Validar(req.Nombre, req.DpiCodigo, req.Tipo, out var nombre, out var dpi);
+        if (error is not null)
+        {
+            return ServicioResultado<PersonaDto>.Fallo(CodigosError.Validacion, error);
+        }
+
+        if (await _personas.ExisteDpiAsync(dpi, id, ct))
         {
             return ServicioResultado<PersonaDto>.Fallo(CodigosError.Conflicto, "Ya existe una persona con ese DPI.");
         }
 
-        existente.Nombre = req.Nombre.Trim();
-        existente.DpiCodigo = req.DpiCodigo.Trim();
+        existente.Nombre = nombre;
+        existente.DpiCodigo = dpi;
         existente.Tipo = req.Tipo;
 
         var actualizada = await _personas.ActualizarAsync(existente, ct);
@@ -107,6 +119,21 @@ public sealed class PersonasService : IPersonasService
         var actualizada = await _personas.ActualizarAsync(existente, ct);
         _logger.LogInformation("Estado de persona cambiado (id={PersonaId}, estado={Estado}).", id, estado);
         return ServicioResultado<PersonaDto>.Ok(PersonaDto.From(actualizada));
+    }
+
+    /// <summary>Normaliza y valida nombre, DPI y tipo (<see cref="ValidacionPersona"/>). Devuelve el mensaje de error o null.</summary>
+    private static string? Validar(string? nombreCrudo, string? dpiCrudo, int tipo, out string nombre, out string dpi)
+    {
+        nombre = ValidacionPersona.NormalizarNombre(nombreCrudo);
+        dpi = ValidacionPersona.NormalizarDpi(dpiCrudo);
+        if (!ValidacionPersona.NombreValido(nombre, out var motivo) || !ValidacionPersona.DpiValido(dpi, out motivo))
+        {
+            return motivo;
+        }
+
+        return tipo is Persona.TipoColaborador or Persona.TipoVisitante
+            ? null
+            : "El tipo debe ser 1 (colaborador) o 2 (visitante).";
     }
 
     private static string? Normalizar(string? valor)

@@ -10,6 +10,12 @@ import { Modal } from '../../shared/ui/modal.component';
 import { SciInput, SciSelect } from '../../shared/ui/field.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
+import { EstadoTabs } from '../../shared/ui/estado-tabs.component';
+import { ConfirmDialog } from '../../shared/ui/confirm-dialog.component';
+import { gestorEstado } from '../../core/util/gestor-estado';
+import { AuthService } from '../../core/services/auth.service';
 
 const ROL_OPTIONS = (Object.keys(ROL_LABELS) as Rol[]).map((r) => ({
   value: r,
@@ -19,7 +25,7 @@ const ROL_OPTIONS = (Object.keys(ROL_LABELS) as Rol[]).map((r) => ({
 @Component({
   selector: 'app-admin-users',
   standalone: true,
-  imports: [
+  imports: [EstadoTabs, ConfirmDialog, LoadError, 
     ReactiveFormsModule,
     Button,
     Icon,
@@ -52,19 +58,29 @@ const ROL_OPTIONS = (Object.keys(ROL_LABELS) as Rol[]).map((r) => ({
         </div>
       </div>
 
+      <sci-estado-tabs
+        [valor]="estados.tab()"
+        [conteos]="estados.conteos()"
+        etiqueta="Estado de los usuarios"
+        controla="tabla-usuarios"
+        (cambio)="estados.irA($event)"
+      />
+
       <sci-card>
-        <div class="table-wrap">
+        <div class="table-wrap" id="tabla-usuarios" role="tabpanel" [attr.aria-labelledby]="'tab-' + estados.tab()">
           @if (loading()) {
             <table class="sci-table"><tbody>
               @for (i of [1,2,3,4,5]; track i) {
                 <tr class="sci-skel-row">@for (c of [1,2,3,4]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table>
+          } @else if (carga.error(); as e) {
+            <sci-load-error [message]="e" (retry)="carga.cargar()" />
           } @else if (filtered().length === 0) {
-            <sci-empty-state
+            <sci-empty-state [title]="estados.tab() === 'deshabilitados' ? 'Sin usuarios deshabilitados' : 'Sin usuarios'" [message]="searchText() ? 'No hay usuarios que coincidan con la búsqueda.' : estados.vacio()"
               icon="users"
-              title="Sin usuarios"
-              message="No hay usuarios que coincidan con la búsqueda. Crea uno nuevo para comenzar."
+             
+             
             >
               <button sci-btn variant="primary" size="sm" iconName="plus" (click)="openCreate()">Nuevo usuario</button>
             </sci-empty-state>
@@ -99,9 +115,15 @@ const ROL_OPTIONS = (Object.keys(ROL_LABELS) as Rol[]).map((r) => ({
                     <td>
                       <div class="cell-actions">
                         <button class="sci-btn-ghost" aria-label="Editar" (click)="openEdit(u)"><sci-icon name="edit" [size]="17" /></button>
-                        <button class="sci-btn-ghost" [attr.aria-label]="u.activo ? 'Desactivar' : 'Activar'" (click)="toggle(u)">
-                          <sci-icon [name]="u.activo ? 'x' : 'check'" [size]="17" />
-                        </button>
+                        @if (u.activo) {
+                          @if (!esYo(u)) {
+                            <button class="sci-btn-ghost" [attr.aria-label]="'Deshabilitar ' + u.nombre" title="Deshabilitar" (click)="estados.pedir(u)">
+                              <sci-icon name="x" [size]="17" />
+                            </button>
+                          }
+                        } @else {
+                          <button sci-btn variant="secondary" size="sm" iconName="refresh" [attr.aria-label]="'Reactivar ' + u.nombre" (click)="estados.pedir(u)">Reactivar</button>
+                        }
                       </div>
                     </td>
                   </tr>
@@ -136,6 +158,19 @@ const ROL_OPTIONS = (Object.keys(ROL_LABELS) as Rol[]).map((r) => ({
         </div>
       </form>
     </sci-modal>
+
+    @if (estados.pendiente(); as c) {
+      <sci-confirm-dialog
+        [open]="true"
+        [title]="estados.textos(c).titulo"
+        [message]="estados.textos(c).mensaje"
+        [confirmLabel]="estados.textos(c).boton"
+        [variant]="c.accion === 'deshabilitar' ? 'danger' : 'primary'"
+        [loading]="estados.procesando()"
+        (confirmed)="estados.confirmar()"
+        (cancelled)="estados.cancelar()"
+      />
+    }
   `,
   styles: [
     `
@@ -177,17 +212,35 @@ export class UsersComponent implements OnInit {
   private readonly service = inject(UsersService);
   private readonly fb = inject(FormBuilder);
   private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
 
   protected readonly ROL_LABELS = ROL_LABELS;
   protected readonly rolOptions = ROL_OPTIONS;
-  protected readonly loading = signal(true);
   protected readonly saving = signal(false);
-  protected readonly users = signal<Usuario[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.list('todos'), [] as Usuario[], 'No se pudieron cargar los usuarios.');
+  protected readonly users = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
   protected readonly searchText = signal('');
   protected readonly modalOpen = signal(false);
   protected readonly editing = signal<Usuario | null>(null);
 
-  protected filtered = computed(() => {
+  /** Activos / Deshabilitados / Todos (Fase 8.4): patrón común, baja lógica por el endpoint de estado existente. */
+  protected readonly estados = gestorEstado<Usuario>({
+    datos: this.carga.datos,
+    id: (u) => u.id,
+    nombre: (u) => u.nombre,
+    esActivo: (u) => u.activo,
+    cambiar: (u, estado) => this.service.setEstado(u.id, estado),
+    singular: 'usuario',
+    plural: 'usuarios',
+    femenino: false,
+  });
+
+  /** Primero la búsqueda (y los demás filtros); después la pestaña de estado. */
+  protected filtered = computed(() => this.estados.filtrar(this.buscados()));
+
+  private buscados = computed(() => {
     const q = this.searchText().toLowerCase();
     return this.users().filter(
       (u) =>
@@ -209,17 +262,7 @@ export class UsersComponent implements OnInit {
   }
 
   private load(): void {
-    this.loading.set(true);
-    this.service.list().subscribe({
-      next: (list) => {
-        this.users.set(list);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.loading.set(false);
-        this.toast.error('Error', 'No se pudieron cargar los usuarios.');
-      },
-    });
+    this.carga.cargar();
   }
 
   protected f(name: string): string | null {
@@ -283,21 +326,18 @@ export class UsersComponent implements OnInit {
         this.toast.success(editing ? 'Usuario actualizado' : 'Usuario creado');
         this.load();
       },
-      error: () => {
+      error: (e: { error?: { detail?: string } }) => {
         this.saving.set(false);
-        this.toast.error('Error', 'No se guardó el usuario.');
+        // Fase 8: mostrar el motivo que da el servidor (correo duplicado, formato inválido…), nunca solo un genérico.
+        this.toast.error('No se guardó el usuario', e?.error?.detail ?? 'Intente de nuevo.');
       },
     });
   }
 
-  protected toggle(u: Usuario): void {
-    this.service.setEstado(u.id, u.activo ? 'inactivo' : 'activo').subscribe({
-      next: () => {
-        this.toast.info(u.activo ? 'Usuario desactivado' : 'Usuario activado');
-        this.load();
-      },
-      error: () => this.toast.error('Error', 'No se pudo cambiar el estado.'),
-    });
+
+  /** Un administrador no puede deshabilitar su propia cuenta (el backend también lo impide). */
+  protected esYo(u: Usuario): boolean {
+    return this.auth.currentUser()?.id === u.id;
   }
 
   protected date(iso: string): string {

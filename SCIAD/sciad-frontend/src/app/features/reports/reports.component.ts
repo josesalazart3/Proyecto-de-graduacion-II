@@ -15,11 +15,13 @@ import { EmptyState } from '../../shared/ui/empty-state.component';
 import { Modal } from '../../shared/ui/modal.component';
 import { SciInput, SciSelect } from '../../shared/ui/field.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
 
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [KpiCard, Card, Button, EmptyState, Modal, SciInput, SciSelect, ReactiveFormsModule],
+  imports: [LoadError, KpiCard, Card, Button, EmptyState, Modal, SciInput, SciSelect, ReactiveFormsModule],
   template: `
     <div class="page">
       <div class="page-header">
@@ -50,6 +52,8 @@ import { ToastService } from '../../shared/ui/toast.service';
                 <tr class="sci-skel-row">@for (c of [1,2,3,4]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table>
+          } @else if (carga.error(); as e) {
+            <sci-load-error [message]="e" (retry)="carga.cargar()" />
           } @else if (reportes().length === 0) {
             <sci-empty-state icon="file" title="Sin reportes" message="Aún no se ha generado ningún reporte.">
               <button sci-btn variant="primary" size="sm" iconName="download" (click)="open()">Generar el primero</button>
@@ -116,10 +120,12 @@ export class ReportsComponent implements OnInit {
     { value: 'ingreso', label: 'Solo ingresos' },
     { value: 'egreso', label: 'Solo egresos' },
   ];
-  protected readonly loading = signal(true);
   protected readonly generating = signal(false);
   protected readonly modalOpen = signal(false);
-  protected readonly reportes = signal<Reporte[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.list(), [] as Reporte[], 'No se pudieron cargar los reportes.');
+  protected readonly reportes = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
   protected readonly personas = signal<Persona[]>([]);
   protected readonly zonas = signal<Zona[]>([]);
 
@@ -152,9 +158,9 @@ export class ReportsComponent implements OnInit {
     this.load();
     // Solo el Administrador tiene permiso sobre /api/personas (PG2 §4.3.2); para Gerencia el filtro de persona queda en "Todas".
     if (this.auth.role() === 'ADMIN') {
-      this.personasSvc.list().subscribe({ next: (ps) => this.personas.set(ps), error: () => undefined });
+      this.personasSvc.list('todos').subscribe({ next: (ps) => this.personas.set(ps), error: () => undefined });
     }
-    this.zonasSvc.list().subscribe((zs) => this.zonas.set(zs));
+    this.zonasSvc.list('todos').subscribe((zs) => this.zonas.set(zs));
   }
 
   protected f(name: string): string | null {
@@ -169,14 +175,7 @@ export class ReportsComponent implements OnInit {
   }
 
   protected load(): void {
-    this.loading.set(true);
-    this.service.list().subscribe({
-      next: (list) => {
-        this.reportes.set(list);
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
+    this.carga.cargar();
   }
 
   protected generate(): void {

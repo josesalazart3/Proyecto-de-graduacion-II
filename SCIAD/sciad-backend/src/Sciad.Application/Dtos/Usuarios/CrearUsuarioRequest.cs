@@ -10,6 +10,7 @@ public sealed class CrearUsuarioRequest
 
     [Required(ErrorMessage = "El correo es obligatorio.")]
     [EmailAddress(ErrorMessage = "El correo no tiene un formato válido.")]
+    [RegularExpression(@"^\s*[^@\s]+@[^@\s]+\.[^@\s]+\s*$", ErrorMessage = "El correo no tiene un formato válido.")]
     [StringLength(120, ErrorMessage = "El correo no puede superar 120 caracteres.")]
     public string Correo { get; set; } = null!;
 

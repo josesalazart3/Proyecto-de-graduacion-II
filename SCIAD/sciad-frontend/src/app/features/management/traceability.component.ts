@@ -10,6 +10,9 @@ import { Button } from '../../shared/ui/button.component';
 import { Badge, StatusKey } from '../../shared/ui/badge.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { fechaLocal, horaLocal } from '../../core/util/time';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
+import { tap } from 'rxjs';
 
 function badgeTipo(tipo: string): StatusKey {
   return tipo === 'ingreso' ? 'activo' : 'inactivo';
@@ -18,7 +21,7 @@ function badgeTipo(tipo: string): StatusKey {
 @Component({
   selector: 'app-traceability',
   standalone: true,
-  imports: [Card, Button, Badge, EmptyState],
+  imports: [LoadError, Card, Button, Badge, EmptyState],
   template: `
     <div class="page">
       <div class="page-header">
@@ -55,6 +58,8 @@ function badgeTipo(tipo: string): StatusKey {
                 <tr class="sci-skel-row">@for (c of [1,2,3,4,5]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table>
+          } @else if (carga.error(); as e) {
+            <sci-load-error [message]="e" (retry)="carga.cargar()" />
           } @else if (rows().length === 0) {
             <sci-empty-state icon="activity" title="Sin resultados" message="No hay accesos que coincidan con los filtros." />
           } @else {
@@ -109,8 +114,17 @@ export class TraceabilityComponent implements OnInit {
   // fecha/hora vienen en hora de Guatemala (Fase 4): se muestran en la hora del dispositivo.
   protected fechaDe(r: RegistroHistorial): string { return fechaLocal(r.fecha, r.hora); }
   protected horaDe(r: RegistroHistorial): string { return horaLocal(r.fecha, r.hora); }
-  protected readonly loading = signal(true);
-  protected readonly rows = signal<RegistroHistorial[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service
+      .historial({
+        personaId: this.personaId() ? +this.personaId() : undefined,
+        zonaId: this.zonaId() ? +this.zonaId() : undefined,
+        desde: this.fecha() ? this.fecha() : undefined,
+        hasta: this.fecha() ? this.fecha() : undefined,
+      })
+      .pipe(tap((list) => this.recordarPersonas(list))), [] as RegistroHistorial[], 'No se pudo cargar el historial de accesos.');
+  protected readonly rows = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
   // Opciones del filtro "persona": el Administrador usa el listado completo del backend; Gerencia/Auditoría (que no tiene
   // permiso sobre /api/personas) usa las personas que aparecen en los registros ya cargados.
   private readonly personasApi = signal<{ id: string; nombre: string }[]>([]);
@@ -130,31 +144,16 @@ export class TraceabilityComponent implements OnInit {
     // GET /api/personas es solo del Administrador (RequireAdmin, PG2 §4.3.2). Gerencia/Auditoría no lo pide: su filtro
     // de personas se arma con los registros que ya consulta (historial).
     if (this.auth.role() === 'ADMIN') {
-      this.personasSvc.list().subscribe({
+      this.personasSvc.list('todos').subscribe({
         next: (ps) => this.personasApi.set(ps.map((p) => ({ id: String(p.id), nombre: p.nombre }))),
         error: () => undefined,
       });
     }
-    this.zonasSvc.list().subscribe((zs) => this.zonas.set(zs));
+    this.zonasSvc.list('todos').subscribe((zs) => this.zonas.set(zs));
   }
 
   protected load(): void {
-    this.loading.set(true);
-    this.service
-      .historial({
-        personaId: this.personaId() ? +this.personaId() : undefined,
-        zonaId: this.zonaId() ? +this.zonaId() : undefined,
-        desde: this.fecha() ? this.fecha() : undefined,
-        hasta: this.fecha() ? this.fecha() : undefined,
-      })
-      .subscribe({
-        next: (list) => {
-          this.rows.set(list);
-          this.recordarPersonas(list);
-          this.loading.set(false);
-        },
-        error: () => this.loading.set(false),
-      });
+    this.carga.cargar(); // usa los filtros vigentes
   }
 
   /** Acumula (sin repetir) las personas vistas en los registros para poblar el filtro. */

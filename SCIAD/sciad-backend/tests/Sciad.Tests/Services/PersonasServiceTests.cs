@@ -151,9 +151,9 @@ public sealed class PersonasServiceTests
         var existente = TestData.PersonaActiva(9, "Antes");
         _personas.Setup(m => m.FindByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(existente);
         // El DPI pertenece a otra persona (id != 9): se rechaza.
-        _personas.Setup(m => m.ExisteDpiAsync("999", 9, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _personas.Setup(m => m.ExisteDpiAsync("2412348820101", 9, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
-        var resultado = await Servicio().ActualizarAsync(9, new ActualizarPersonaRequest { Nombre = "Después", DpiCodigo = "999", Tipo = 2 });
+        var resultado = await Servicio().ActualizarAsync(9, new ActualizarPersonaRequest { Nombre = "Después", DpiCodigo = "2412348820101", Tipo = 2 });
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.Conflicto, resultado.CodigoError);

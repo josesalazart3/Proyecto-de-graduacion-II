@@ -12,24 +12,31 @@ import { Modal } from '../../shared/ui/modal.component';
 import { SciInput, SciSelect } from '../../shared/ui/field.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
+import { EstadoTabs } from '../../shared/ui/estado-tabs.component';
+import { ConfirmDialog } from '../../shared/ui/confirm-dialog.component';
+import { gestorEstado } from '../../core/util/gestor-estado';
 
+// Valores en MAYÚSCULAS, como los guarda el sistema (BAJO/MEDIO/ALTO/CRITICO): así el selector muestra el nivel real
+// al editar y no lo cambia sin querer (Fase 8.3).
 const NIVEL_OPTIONS = [
-  { value: 'bajo', label: 'Bajo' },
-  { value: 'medio', label: 'Medio' },
-  { value: 'alto', label: 'Alto' },
+  { value: 'BAJO', label: 'Bajo' },
+  { value: 'MEDIO', label: 'Medio' },
+  { value: 'ALTO', label: 'Alto' },
 ];
 
 const RIESGO_OPTIONS = [
-  { value: 'bajo', label: 'Bajo' },
-  { value: 'medio', label: 'Medio' },
-  { value: 'alto', label: 'Alto' },
-  { value: 'critico', label: 'Crítico' },
+  { value: 'BAJO', label: 'Bajo' },
+  { value: 'MEDIO', label: 'Medio' },
+  { value: 'ALTO', label: 'Alto' },
+  { value: 'CRITICO', label: 'Crítico' },
 ];
 
 @Component({
   selector: 'app-admin-zonas',
   standalone: true,
-  imports: [ReactiveFormsModule, Button, Icon, Card, Badge, Modal, SciInput, SciSelect, EmptyState],
+  imports: [EstadoTabs, ConfirmDialog, LoadError, ReactiveFormsModule, Button, Icon, Card, Badge, Modal, SciInput, SciSelect, EmptyState],
   template: `
     <div class="page">
       <div class="page-header">
@@ -52,16 +59,26 @@ const RIESGO_OPTIONS = [
         </div>
       </div>
 
+      <sci-estado-tabs
+        [valor]="estados.tab()"
+        [conteos]="estados.conteos()"
+        etiqueta="Estado de las zonas"
+        controla="tabla-zonas"
+        (cambio)="estados.irA($event)"
+      />
+
       <sci-card>
-        <div class="table-wrap">
+        <div class="table-wrap" id="tabla-zonas" role="tabpanel" [attr.aria-labelledby]="'tab-' + estados.tab()">
           @if (loading()) {
             <table class="sci-table"><tbody>
               @for (i of [1,2,3,4]; track i) {
                 <tr class="sci-skel-row">@for (c of [1,2,3,4,5]; track c) {<td><div class="skel"></div></td>}</tr>
               }
             </tbody></table>
+          } @else if (carga.error(); as e) {
+            <sci-load-error [message]="e" (retry)="carga.cargar()" />
           } @else if (filtered().length === 0) {
-            <sci-empty-state icon="building2" title="Sin zonas" message="No hay zonas que coincidan con la búsqueda.">
+            <sci-empty-state [title]="estados.tab() === 'deshabilitados' ? 'Sin zonas deshabilitadas' : 'Sin zonas'" [message]="searchText() ? 'No hay zonas que coincidan con la búsqueda.' : estados.vacio()" icon="building2">
               <button sci-btn variant="primary" size="sm" iconName="plus" (click)="openCreate()">Nueva zona</button>
             </sci-empty-state>
           } @else {
@@ -87,9 +104,13 @@ const RIESGO_OPTIONS = [
                     <td>
                       <div class="cell-actions">
                         <button class="sci-btn-ghost" aria-label="Editar" (click)="openEdit(z)"><sci-icon name="edit" [size]="17" /></button>
-                        <button class="sci-btn-ghost" [attr.aria-label]="z.estado === 'activo' ? 'Inactivar' : 'Activar'" (click)="toggle(z)">
-                          <sci-icon [name]="z.estado === 'activo' ? 'x' : 'check'" [size]="17" />
-                        </button>
+                        @if (z.estado === 'activo') {
+                          <button class="sci-btn-ghost" [attr.aria-label]="'Deshabilitar ' + z.nombre" title="Deshabilitar" (click)="estados.pedir(z)">
+                            <sci-icon name="x" [size]="17" />
+                          </button>
+                        } @else {
+                          <button sci-btn variant="secondary" size="sm" iconName="refresh" [attr.aria-label]="'Reactivar ' + z.nombre" (click)="estados.pedir(z)">Reactivar</button>
+                        }
                       </div>
                     </td>
                   </tr>
@@ -115,6 +136,19 @@ const RIESGO_OPTIONS = [
         </div>
       </form>
     </sci-modal>
+
+    @if (estados.pendiente(); as c) {
+      <sci-confirm-dialog
+        [open]="true"
+        [title]="estados.textos(c).titulo"
+        [message]="estados.textos(c).mensaje"
+        [confirmLabel]="estados.textos(c).boton"
+        [variant]="c.accion === 'deshabilitar' ? 'danger' : 'primary'"
+        [loading]="estados.procesando()"
+        (confirmed)="estados.confirmar()"
+        (cancelled)="estados.cancelar()"
+      />
+    }
   `,
   styles: [
     `
@@ -138,9 +172,11 @@ export class ZonasComponent implements OnInit {
 
   protected readonly nivelOptions = NIVEL_OPTIONS;
   protected readonly riesgoOptions = RIESGO_OPTIONS;
-  protected readonly loading = signal(true);
   protected readonly saving = signal(false);
-  protected readonly zonas = signal<Zona[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.list('todos'), [] as Zona[], 'No se pudieron cargar las zonas.');
+  protected readonly zonas = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
   protected readonly searchText = signal('');
   protected readonly modalOpen = signal(false);
   protected readonly editing = signal<Zona | null>(null);
@@ -148,12 +184,27 @@ export class ZonasComponent implements OnInit {
   protected readonly form = this.fb.group({
     id: [''],
     nombre: ['', Validators.required],
-    nivelSeguridad: ['medio', Validators.required],
-    nivelRiesgo: ['medio', Validators.required],
+    nivelSeguridad: ['MEDIO', Validators.required],
+    nivelRiesgo: ['MEDIO', Validators.required],
     capacidad: [null as number | null],
   });
 
-  protected filtered = computed(() => {
+  /** Activos / Deshabilitados / Todos (Fase 8.4): patrón común, baja lógica por el endpoint de estado existente. */
+  protected readonly estados = gestorEstado<Zona>({
+    datos: this.carga.datos,
+    id: (z) => z.id,
+    nombre: (z) => z.nombre,
+    esActivo: (z) => z.estado === 'activo',
+    cambiar: (z, estado) => this.service.setEstado(z.id, estado),
+    singular: 'zona',
+    plural: 'zonas',
+    femenino: true,
+  });
+
+  /** Primero la búsqueda (y los demás filtros); después la pestaña de estado. */
+  protected filtered = computed(() => this.estados.filtrar(this.buscados()));
+
+  private buscados = computed(() => {
     const q = this.searchText().toLowerCase();
     return this.zonas().filter((z) => !q || z.nombre.toLowerCase().includes(q));
   });
@@ -163,15 +214,11 @@ export class ZonasComponent implements OnInit {
   }
 
   private load(): void {
-    this.loading.set(true);
-    this.service.list().subscribe({
-      next: (list) => { this.zonas.set(list); this.loading.set(false); },
-      error: () => { this.loading.set(false); this.toast.error('Error', 'No se pudieron cargar las zonas.'); },
-    });
+    this.carga.cargar();
   }
 
   protected nivelStatus(nivel: string): StatusKey {
-    switch (nivel) {
+    switch (nivel.toLowerCase()) {
       case 'bajo': return 'baja';
       case 'medio': return 'media';
       case 'alto': return 'alta';
@@ -180,7 +227,7 @@ export class ZonasComponent implements OnInit {
   }
 
   protected riesgoStatus(riesgo: string): StatusKey {
-    switch (riesgo) {
+    switch (riesgo.toLowerCase()) {
       case 'bajo': return 'baja';
       case 'medio': return 'media';
       case 'alto': return 'alta';
@@ -199,7 +246,7 @@ export class ZonasComponent implements OnInit {
   protected openCreate(): void {
     this.editing.set(null);
     this.form.reset();
-    this.form.patchValue({ nivelSeguridad: 'medio', nivelRiesgo: 'medio', capacidad: null });
+    this.form.patchValue({ nivelSeguridad: 'MEDIO', nivelRiesgo: 'MEDIO', capacidad: null });
     this.modalOpen.set(true);
   }
 
@@ -208,8 +255,8 @@ export class ZonasComponent implements OnInit {
     this.form.patchValue({
       id: z.id,
       nombre: z.nombre,
-      nivelSeguridad: z.nivelSeguridad,
-      nivelRiesgo: z.nivelRiesgo,
+      nivelSeguridad: z.nivelSeguridad.toUpperCase(),
+      nivelRiesgo: z.nivelRiesgo.toUpperCase(),
       capacidad: z.capacidad ?? null,
     });
     this.modalOpen.set(true);
@@ -251,16 +298,6 @@ export class ZonasComponent implements OnInit {
     });
   }
 
-  protected toggle(z: Zona): void {
-    const estado = z.estado === 'activo' ? 'inactivo' : 'activo';
-    this.service.setEstado(z.id, estado).subscribe({
-      next: () => {
-        this.toast.info(z.estado === 'activo' ? 'Zona inactivada' : 'Zona activada');
-        this.load();
-      },
-      error: () => this.toast.error('Error', 'No se pudo cambiar el estado.'),
-    });
-  }
 
   private errorMessage(e: unknown): string | null {
     const detail = (e as { error?: { detail?: string } })?.error?.detail;

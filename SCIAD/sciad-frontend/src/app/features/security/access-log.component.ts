@@ -11,11 +11,13 @@ import { Card } from '../../shared/ui/card.component';
 import { EmptyState } from '../../shared/ui/empty-state.component';
 import { ToastService } from '../../shared/ui/toast.service';
 import { horaLocal, hoyServidor } from '../../core/util/time';
+import { LoadError } from '../../shared/ui/load-error.component';
+import { recurso } from '../../core/util/recurso';
 
 @Component({
   selector: 'app-access-log',
   standalone: true,
-  imports: [Button, Card, EmptyState],
+  imports: [LoadError, Button, Card, EmptyState],
   template: `
     <div class="log">
       <div class="log-head">
@@ -43,6 +45,8 @@ import { horaLocal, hoyServidor } from '../../core/util/time';
 
       @if (loading()) {
         <div class="skels">@for (i of [1,2,3,4,5]; track i) { <div class="skel"></div> }</div>
+      } @else if (carga.error(); as e) {
+        <sci-load-error [message]="e" (retry)="carga.cargar()" />
       } @else if (rows().length === 0) {
         <sci-card><sci-empty-state icon="clock" title="Sin movimientos hoy" message="Aún no hay registros de acceso hoy." /></sci-card>
       } @else {
@@ -107,8 +111,10 @@ export class AccessLogComponent implements OnInit {
   private readonly service = inject(AccessLogService);
   private readonly toast = inject(ToastService);
 
-  protected readonly loading = signal(true);
-  protected readonly records = signal<AccesoDelDia[]>([]);
+  /** Carga común (Fase 8.2): estado cargando / listo / error + reintentar. */
+  protected readonly carga = recurso(() => this.service.hoy(), [] as AccesoDelDia[], 'No se pudieron cargar los accesos de hoy.');
+  protected readonly records = this.carga.datos;
+  protected readonly loading = this.carga.cargando;
 
   /** La hora llega en hora de Guatemala ("hoy" = día de Guatemala): se muestra en la hora del dispositivo. */
   protected hora(h: string | null | undefined): string {
@@ -132,16 +138,6 @@ export class AccessLogComponent implements OnInit {
   }
 
   protected load(): void {
-    this.loading.set(true);
-    this.service.hoy().subscribe({
-      next: (list) => {
-        this.records.set(list);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.loading.set(false);
-        this.toast.error('Error', 'No se pudieron cargar los accesos.');
-      },
-    });
+    this.carga.cargar();
   }
 }
