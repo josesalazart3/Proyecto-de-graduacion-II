@@ -1,5 +1,8 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sciad.Application.Services;
 using Sciad.Domain.Entities;
 
 namespace Sciad.Tests.Support;
@@ -66,7 +69,7 @@ public static class TestData
         Id = id,
         PersonaId = personaId,
         Persona = persona ?? PersonaActiva(personaId),
-        Token = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
+        Token = TokenHex($"activa-{id}"),
         Estado = "activa",
         Emitido = DateOnly.FromDateTime(GuatemalaTime.Now),
     };
@@ -77,10 +80,23 @@ public static class TestData
             Id = id,
             PersonaId = personaId,
             Persona = persona ?? PersonaActiva(personaId),
-            Token = $"token-{estado}-{id}".PadRight(64, '0'),
+            Token = TokenHex($"{estado}-{id}"),
             Estado = estado,
             Emitido = DateOnly.FromDateTime(GuatemalaTime.Now),
         };
+
+    /// <summary>Token de 64 hex determinista (32 bytes), como los que genera el servicio.</summary>
+    public static string TokenHex(string semilla) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(semilla))).ToLowerInvariant();
+
+    // ---------------- Sobre cifrado del QR ----------------
+    /// <summary>Clave fija SOLO para pruebas (32 bytes en base64).</summary>
+    public const string ClaveQrPrueba = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+
+    public static readonly CifradoQr CifradoQr = new(ClaveQrPrueba);
+
+    /// <summary>Contenido del QR de la credencial (sobre cifrado con la clave de prueba).</summary>
+    public static string Sobre(CredencialQr c) => CifradoQr.Cifrar(c.Id, c.Token);
 
     // ---------------- Usuario / rol ----------------
     public static Usuario UsuarioGerencia(int id = 1) =>

@@ -83,7 +83,7 @@ console.log(`Zonas: hist(id=${zonaHist.id}), conc(id=${zonaConc.id}).\n`);
 // Persona de historial: hoy, ingreso→egreso en zonaHist (2 registros para CU-06 y CU-07).
 const personaH = await crearPersona('H');
 await asignarPerfil(personaH.id, zonaHist.id);
-const tknH = (await credencial(personaH.id)).token;
+const tknH = (await credencial(personaH.id)).qr;
 const esc1 = await escanear(S, tknH, zonaHist.id);
 const esc2 = await escanear(S, tknH, zonaHist.id);
 assert.ok(esc1.body?.tipo === 'ingreso' && esc2.body?.tipo === 'egreso', `esperaba ingreso→egreso para H, obtuve ${esc1.body?.tipo}→${esc2.body?.tipo}`);
@@ -167,7 +167,7 @@ let hallazgoConc;
   for (let i = 0; i < 12; i++) {
     const p = await crearPersona(`C${i}`);
     await asignarPerfil(p.id, zonaConc.id);
-    const t = (await credencial(p.id)).token;
+    const t = (await credencial(p.id)).qr;
     const s = await escanear(S, t, zonaConc.id);
     assert.ok(s.status === 200 && s.body?.tipo === 'ingreso', `scan concentración ${i} falló: ${s.status}`);
     scans.push(s);

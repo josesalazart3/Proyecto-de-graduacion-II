@@ -108,8 +108,8 @@ const us = await b('/api/usuarios?tamanoPagina=50', { token: T.admin });
 ok('la API nunca devuelve contraseñas ni hashes de usuarios', us.status === 200 && !/password|passwordHash|\$2[aby]\$\d\d\$/i.test(us.text));
 ok('respuestas de la API con Cache-Control: no-store', /no-store/.test(apiH.h.get('cache-control') ?? ''), apiH.h.get('cache-control'));
 ok('el HTML (index) con Cache-Control: no-store', /no-store/.test(idx.h.get('cache-control') ?? ''), idx.h.get('cache-control'));
-const creds = await b('/api/credenciales', { token: T.admin }); const toks = (creds.json ?? []).map((c) => c.token);
-ok('tokens de credencial QR: 64 hex únicos (256 bits)', toks.length === 0 || (toks.every((t) => /^[0-9A-Fa-f]{64}$/.test(t)) && new Set(toks).size === toks.length), `${toks.length} tokens`);
+const creds = await b('/api/credenciales', { token: T.admin }); const qrs = (creds.json ?? []).map((c) => c.qr);
+ok('credenciales QR: sobre AES-256-GCM (SCIAD1.…) y la API no expone el token completo', qrs.length === 0 || (qrs.every((q) => /^SCIAD1\.[A-Za-z0-9_-]{87}$/.test(q)) && (creds.json ?? []).every((c) => c.token === undefined)), `${qrs.length} credenciales`);
 ok('el HTML no carga recursos http:// ni de terceros (sin contenido mixto)', !/(src|href)=["']https?:\/\//i.test(idx.text));
 if (ENV === 'prod' && BASE.startsWith('https')) {
   ok('HSTS con includeSubDomains', /max-age=\d{7,}.*includeSubDomains/i.test(idx.h.get('strict-transport-security') ?? ''), idx.h.get('strict-transport-security'));
@@ -140,7 +140,7 @@ if (per.json?.id) await b(`/api/zonas-acceso/${per.json.id}/estado`, { method: '
 // ───────────────────────────────────────── A04 ─────────────────────────────────────────
 head('A04 · Diseño inseguro');
 const e1 = await b('/api/registros-acceso', { method: 'POST', token: T.seg, body: { token: 'f'.repeat(64), zonaId: 1 } });
-ok('escanear un token inexistente → 400 TOKEN_INVALIDO (sin acceso)', e1.status === 400, `${e1.status} ${e1.json?.code}`);
+ok('escanear un QR antiguo de 64 hex → 400 TOKEN_INVALIDO (sin acceso)', e1.status === 400 && e1.json?.code === 'TOKEN_INVALIDO', `${e1.status} ${e1.json?.code}`);
 const e2 = await b('/api/registros-acceso', { method: 'POST', token: T.seg, body: { token: 'no-es-hex', zonaId: 1 } });
 ok('token con formato inválido → 400', e2.status === 400, e2.status);
 const e3 = await b('/api/registros-acceso', { method: 'POST', token: T.seg, body: { token: 'f'.repeat(64), zonaId: -1 } });

@@ -108,7 +108,7 @@ for (const p of PERSONAS) {
     creds = items(must(await call('GET', `/api/credenciales?personaId=${personaId}`, { token: T }), [200], 'relistar credenciales'));
   }
   const cred = creds.find((c) => c.estado === 'activa') ?? creds[0];
-  salida.push({ nombre: p.nombre, dpi: p.dpi, tipo: p.tipo === 1 ? 'Colaborador' : 'Visitante', escenario: p.escenario, esperado: p.esperado, estado: cred.estado, token: cred.token });
+  salida.push({ nombre: p.nombre, dpi: p.dpi, tipo: p.tipo === 1 ? 'Colaborador' : 'Visitante', escenario: p.escenario, esperado: p.esperado, estado: cred.estado, qr: cred.qr });
 }
 
 // 3) Archivos de salida (ignorados por git)
@@ -121,7 +121,7 @@ if (existsSync(qrLib)) {
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const cards = [];
   for (const s of salida) {
-    const img = await QRCode.toDataURL(s.token, { errorCorrectionLevel: 'M', margin: 3, width: 360 });
+    const img = await QRCode.toDataURL(s.qr, { errorCorrectionLevel: 'M', margin: 3, width: 360 });
     cards.push(`<div class="c"><img src="${img}" alt="QR"><div class="n">${esc(s.nombre)}</div><div class="t">${esc(s.tipo)} · ${esc(s.estado)}</div><div class="e">${esc(s.escenario)}</div><div class="x">${esc(s.esperado)}</div></div>`);
   }
   html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>SCIAD — QR de demostración</title><style>

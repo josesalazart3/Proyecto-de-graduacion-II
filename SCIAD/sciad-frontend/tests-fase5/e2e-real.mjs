@@ -93,9 +93,9 @@ for (const d of defs) {
   if (d.perfil) await api('POST', '/perfiles-acceso', { token: admin, body: { personaId: +per.id, zonaId: +zona.id, vigenciaInicio: fechaGT(d.perfil[0]), vigenciaFin: fechaGT(d.perfil[1]) } });
   const cred = (await api('POST', `/credenciales/${per.id}/generar`, { token: admin })).body;
   if (d.revocar) await api('POST', `/credenciales/${cred.id}/revocar`, { token: admin, body: { motivo: 'E2E' } });
-  P[d.k] = { ...d, id: per.id, token: cred.token };
+  P[d.k] = { ...d, id: per.id, token: cred.qr }; // contenido del QR (sobre cifrado)
 }
-check('4 personas de prueba con credencial creadas (token de 64 hex)', Object.values(P).every((x) => /^[0-9a-fA-F]{64}$/.test(x.token ?? '')), Object.values(P).map((x) => x.k + ':' + (x.token ?? '').slice(0, 6)).join(' '));
+check('4 personas de prueba con credencial creadas (QR cifrado SCIAD1.…)', Object.values(P).every((x) => /^SCIAD1\.[A-Za-z0-9_-]{87}$/.test(x.token ?? '')),Object.values(P).map((x) => x.k + ':' + (x.token ?? '').slice(0, 6)).join(' '));
 
 const video = join(tmpdir(), `sciad-e2e-real-${run}.y4m`);
 await crearVideo(video, [

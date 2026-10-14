@@ -21,7 +21,7 @@ public sealed class CredencialesServiceTests
     private readonly Mock<IPersonaRepository> _personas = new();
 
     private CredencialesService Servicio() =>
-        new(_credenciales.Object, _personas.Object, TestData.LoggerNulo<CredencialesService>());
+        new(_credenciales.Object, _personas.Object, TestData.CifradoQr, TestData.LoggerNulo<CredencialesService>());
 
     // ========== Generar ==========
     [Fact]
@@ -64,8 +64,9 @@ public sealed class CredencialesServiceTests
     {
         _personas.Setup(m => m.FindByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(TestData.PersonaActiva(9, "Ana López"));
         _credenciales.Setup(m => m.ObtenerActivaPorPersonaAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync((CredencialQr?)null);
+        CredencialQr? guardada = null;
         _credenciales.Setup(m => m.AgregarAsync(It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CredencialQr c, CancellationToken _) => { c.Id = 77; return c; });
+            .ReturnsAsync((CredencialQr c, CancellationToken _) => { c.Id = 77; guardada = c; return c; });
 
         var resultado = await Servicio().GenerarAsync(9);
 
@@ -73,20 +74,26 @@ public sealed class CredencialesServiceTests
         var dto = resultado.Dato!;
         Assert.Equal("77", dto.Id);
         Assert.Equal("activa", dto.Estado);
-        Assert.Matches(TokenHex64, dto.Token);
+        Assert.Matches(TokenHex64, guardada!.Token); // en la BD: token aleatorio de 64 hex
         Assert.Null(dto.ReemitidoDe);
         Assert.DoesNotMatch(TokenHex64, "no-token");
+        // El DTO no expone el token: solo el código corto y el sobre cifrado del QR, que se descifra al mismo token.
+        Assert.Equal(guardada.Token[..8], dto.TokenCorto);
+        Assert.DoesNotContain(guardada.Token, dto.Qr);
+        Assert.True(TestData.CifradoQr.TryDescifrar(dto.Qr, out var idQr, out var tokenQr));
+        Assert.Equal(77, idQr);
+        Assert.Equal(Convert.FromHexString(guardada.Token), tokenQr);
         // El token generado debe diferir entre llamadas (CSPRNG).
-        var otroToken = dto.Token;
+        var otroToken = guardada.Token;
 
         // Segundo escenario: otra persona sin credencial previa → nuevo token distinto.
         _personas.Setup(m => m.FindByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(TestData.PersonaActiva(10));
         _credenciales.Setup(m => m.ObtenerActivaPorPersonaAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync((CredencialQr?)null);
         _credenciales.Setup(m => m.AgregarAsync(It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CredencialQr c, CancellationToken _) => c);
+            .ReturnsAsync((CredencialQr c, CancellationToken _) => { guardada = c; return c; });
         var segundo = await Servicio().GenerarAsync(10);
         Assert.True(segundo.Exitoso);
-        Assert.NotEqual(otroToken, segundo.Dato!.Token);
+        Assert.NotEqual(otroToken, guardada.Token);
     }
 
     // ========== Reemitir ==========
@@ -167,7 +174,9 @@ public sealed class CredencialesServiceTests
         _credenciales.Verify(m => m.ReemitirAsync(anterior, It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()), Times.Once);
         _credenciales.Verify(m => m.ActualizarAsync(It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()), Times.Never);
         var nueva = resultado.Dato!;
-        Assert.Matches(TokenHex64, nueva.Token);
+        Assert.True(TestData.CifradoQr.TryDescifrar(nueva.Qr, out var idQr, out var tokenQr));
+        Assert.Equal(6, idQr); // el QR nuevo apunta a la credencial nueva
+        Assert.NotEqual(Convert.FromHexString(anterior.Token), tokenQr); // con otro token
         Assert.Equal(5, nueva.ReemitidoDe); // trazabilidad
         Assert.Equal("activa", nueva.Estado);
     }

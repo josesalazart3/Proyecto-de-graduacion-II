@@ -65,7 +65,7 @@ async function crearCredencial(tag, idx) {
   if (pf.status !== 201) throw new Error(`${tag} perfil ${idx}: ${pf.status}`);
   const c = await call('POST', `/api/credenciales/${p.body.id}/generar`, { token: ADMIN });
   if (c.status !== 201) throw new Error(`${tag} credencial ${idx}: ${c.status}`);
-  return c.body.token;
+  return c.body.qr; // contenido del QR (sobre cifrado)
 }
 
 const tokens = [];

@@ -36,7 +36,8 @@ const degradar = ({ data, w, h }, factor, blur, sigma) => {
 const dec = (img, inv = 'dontInvert') => jsQR(img.data, img.w, img.h, { inversionAttempts: inv })?.data ?? null;
 
 const N = 300, tokens = [];
-for (let i = 0; i < N; i++) { const hex = randomBytes(32).toString('hex'); tokens.push(i % 2 ? hex.toUpperCase() : hex); }
+// Contenido real del QR: sobre cifrado «SCIAD1.» + 87 base64url (65 bytes aleatorios).
+for (let i = 0; i < N; i++) tokens.push('SCIAD1.' + randomBytes(65).toString('base64url'));
 
 // 1) Ida y vuelta exacta (sin degradar), distintos tamaños de render
 for (const width of [240, 360, 480, 720]) {

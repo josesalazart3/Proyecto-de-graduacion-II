@@ -63,7 +63,7 @@ async function asignarPerfil(personaId, zonaId, ini, fin) {
 async function generarCredencial(personaId) {
   const c = await call('POST', `/api/credenciales/${personaId}/generar`, { token: A });
   assert.equal(c.status, 201, `Credencial no generada: ${c.status}`);
-  return c.body; // { id, token, personaId, estado }
+  return c.body; // { id, qr (sobre cifrado SCIAD1.…), tokenCorto, personaId, estado }
 }
 const zona = await crearZona();
 const zonaId = +zona.id;
@@ -81,8 +81,8 @@ let personaA, tokenA;
 {
   personaA = await crearPersona('A');
   await asignarPerfil(personaA.id, zonaId, inicioVigencia, finVigencia);
-  tokenA = (await generarCredencial(personaA.id)).token;
-  assert.ok(/^[0-9a-f]{64}$/.test(tokenA), 'token no 64 hex');
+  tokenA = (await generarCredencial(personaA.id)).qr;
+  assert.ok(/^SCIAD1\.[A-Za-z0-9_-]{87}$/.test(tokenA), 'el QR no es un sobre SCIAD1.');
 
   const t0 = performance.now();
   const s1 = await call('POST', '/api/registros-acceso', { token: S, body: { token: tokenA, zonaId } });
@@ -101,15 +101,18 @@ console.log('\n== CU-04: ADMIN también puede escanear (policy SEGURIDAD o ADMIN
 {
   const pg = await crearPersona('G');
   await asignarPerfil(pg.id, zonaId, inicioVigencia, finVigencia);
-  const tokenG = (await generarCredencial(pg.id)).token;
+  const tokenG = (await generarCredencial(pg.id)).qr;
   const r = await call('POST', '/api/registros-acceso', { token: A, body: { token: tokenG, zonaId } });
   check('escaneo con ADMIN -> 200 tipo=ingreso', r.status === 200 && r.body?.tipo === 'ingreso');
 }
 
-console.log('\n== CU-04: token válido pero inválido (no existe) -> 400 TOKEN_INVALIDO ==');
+console.log('\n== CU-04: QR que no es un sobre válido -> 400 TOKEN_INVALIDO ==');
 {
   const r = await call('POST', '/api/registros-acceso', { token: S, body: { token: 'f'.repeat(64), zonaId } });
-  check('token inexistente -> 400 TOKEN_INVALIDO', r.status === 400 && r.body?.code === 'TOKEN_INVALIDO');
+  check('QR antiguo de 64 hex -> 400 TOKEN_INVALIDO', r.status === 400 && r.body?.code === 'TOKEN_INVALIDO');
+  const alterado = tokenA.slice(0, 30) + (tokenA[30] === 'A' ? 'B' : 'A') + tokenA.slice(31);
+  const r2 = await call('POST', '/api/registros-acceso', { token: S, body: { token: alterado, zonaId } });
+  check('sobre alterado -> 400 TOKEN_INVALIDO con el mismo mensaje', r2.status === 400 && r2.body?.code === 'TOKEN_INVALIDO' && r2.body?.detail === r.body?.detail);
 }
 
 console.log('\n== CU-04 + notificación: credencial revocada (suplantación) ==');
@@ -118,7 +121,7 @@ console.log('\n== CU-04 + notificación: credencial revocada (suplantación) =='
   await asignarPerfil(pb.id, zonaId, inicioVigencia, finVigencia);
   const cb = await generarCredencial(pb.id);           // tokenB activo
   await call('POST', `/api/credenciales/${cb.id}/reemitir`, { token: A }); // revoca tokenB
-  const r = await call('POST', '/api/registros-acceso', { token: S, body: { token: cb.token, zonaId } });
+  const r = await call('POST', '/api/registros-acceso', { token: S, body: { token: cb.qr, zonaId } });
   check('token revocado -> 400 CREDENCIAL_REVOCADA', r.status === 400 && r.body?.code === 'CREDENCIAL_REVOCADA');
   // genera notificación token_revocado (se confirma por psql al final)
 }
@@ -126,7 +129,7 @@ console.log('\n== CU-04 + notificación: credencial revocada (suplantación) =='
 console.log('\n== CU-04: persona inactiva ==');
 {
   const pc = await crearPersona('C');
-  const tokenC = (await generarCredencial(pc.id)).token;
+  const tokenC = (await generarCredencial(pc.id)).qr;
   await call('PATCH', `/api/personas/${pc.id}/estado`, { token: A, body: { estado: 'inactivo' } });
   const r = await call('POST', '/api/registros-acceso', { token: S, body: { token: tokenC, zonaId } });
   check('persona inactiva -> 400 PERSONA_INACTIVA', r.status === 400 && r.body?.code === 'PERSONA_INACTIVA');
@@ -135,7 +138,7 @@ console.log('\n== CU-04: persona inactiva ==');
 console.log('\n== CU-04: sin perfil para la zona (zona no autorizada) ==');
 {
   const pd = await crearPersona('D');
-  const tokenD = (await generarCredencial(pd.id)).token;
+  const tokenD = (await generarCredencial(pd.id)).qr;
   const r = await call('POST', '/api/registros-acceso', { token: S, body: { token: tokenD, zonaId } });
   check('sin perfil -> 400 ZONA_NO_AUTORIZADA', r.status === 400 && r.body?.code === 'ZONA_NO_AUTORIZADA');
 }
@@ -144,7 +147,7 @@ console.log('\n== CU-04 + notificación: perfil fuera de vigencia (fuera_horario
 {
   const pe = await crearPersona('E');
   await asignarPerfil(pe.id, zonaId, pasadoIni, pasadoFin); // vigencia vencida (2020)
-  const tokenE = (await generarCredencial(pe.id)).token;
+  const tokenE = (await generarCredencial(pe.id)).qr;
   const r = await call('POST', '/api/registros-acceso', { token: S, body: { token: tokenE, zonaId } });
   check('perfil vencido -> 400 FUERA_VIGENCIA', r.status === 400 && r.body?.code === 'FUERA_VIGENCIA');
   // genera notificación fuera_horario (se confirma por psql)
@@ -155,7 +158,7 @@ let carreras = { total: 0, ok: 0, conflicto: 0, otro: {} };
 {
   const pf = await crearPersona('F');
   await asignarPerfil(pf.id, zonaId, inicioVigencia, finVigencia);
-  const tokenF = (await generarCredencial(pf.id)).token;
+  const tokenF = (await generarCredencial(pf.id)).qr;
 
   const N = 20;
   const reqs = Array.from({ length: N }, () => call('POST', '/api/registros-acceso', { token: S, body: { token: tokenF, zonaId } }));

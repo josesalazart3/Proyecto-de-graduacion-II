@@ -32,19 +32,69 @@ public sealed class RegistrosAccesoServiceTests
     private readonly Mock<IUsuarioRepository> _usuarios = new();
 
     private RegistrosAccesoService Servicio() =>
-        new(_credenciales.Object, _zonas.Object, _perfiles.Object, _registros.Object, _usuarios.Object, TestData.LoggerNulo<RegistrosAccesoService>());
+        new(_credenciales.Object, _zonas.Object, _perfiles.Object, _registros.Object, _usuarios.Object, TestData.CifradoQr, TestData.LoggerNulo<RegistrosAccesoService>());
+
+    /// <summary>QR (sobre cifrado) con que se escanea en cada prueba; por defecto, el de una credencial que no existe.</summary>
+    private string _sobre = TestData.Sobre(TestData.CredencialActiva(999, 999));
+
+    /// <summary>Configura la credencial que devuelve el repositorio (búsqueda por id) y el QR con que se escanea.</summary>
+    private void ConCredencial(CredencialQr? c)
+    {
+        _credenciales.Setup(m => m.FindByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(c);
+        if (c is not null) _sobre = TestData.Sobre(c);
+    }
 
     // ========== 1) Rama: token inexistente ==========
     [Fact]
     public async Task Registrar_TokenInexistente_DevuelveTokenInvalido()
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CredencialQr?)null);
+        ConCredencial((CredencialQr?)null);
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token-inexistente", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.TokenInvalido, resultado.CodigoError);
+    }
+
+    // ========== 1b) Sobre del QR inválido: misma respuesta que un token inexistente, sin consultar la BD ==========
+    public static TheoryData<string> SobresInvalidos()
+    {
+        var valido = TestData.Sobre(TestData.CredencialActiva(3, 7));
+        var otraClave = new CifradoQr(Convert.ToBase64String(new byte[32])).Cifrar(3, TestData.TokenHex("activa-3"));
+        return new TheoryData<string>
+        {
+            TestData.TokenHex("activa-3"),              // formato antiguo: 64 hex
+            valido[..^1],                               // truncado
+            valido.Replace("SCIAD1.", "SCIAD2."),       // otra versión
+            otraClave,                                  // cifrado con otra clave
+            valido[..20] + (valido[20] == 'A' ? 'B' : 'A') + valido[21..], // alterado
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(SobresInvalidos))]
+    public async Task Registrar_SobreInvalido_DevuelveTokenInvalido_SinConsultarLaBd(string sobre)
+    {
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(sobre, 1), UsuarioOperador);
+
+        Assert.False(resultado.Exitoso);
+        Assert.Equal(CodigosError.TokenInvalido, resultado.CodigoError);
+        Assert.Equal("El token de la credencial QR no es válido.", resultado.Mensaje);
+        _credenciales.Verify(m => m.FindByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Registrar_SobreValidoConTokenDistintoAlDeLaBd_DevuelveTokenInvalido()
+    {
+        var enBd = TestData.CredencialActiva(3, 7);
+        var sobreAjeno = TestData.CifradoQr.Cifrar(3, TestData.TokenHex("otro-token")); // mismo id, token distinto
+        _credenciales.Setup(m => m.FindByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(enBd);
+
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(sobreAjeno, 1), UsuarioOperador);
+
+        Assert.False(resultado.Exitoso);
+        Assert.Equal(CodigosError.TokenInvalido, resultado.CodigoError);
+        Assert.Equal("El token de la credencial QR no es válido.", resultado.Mensaje);
     }
 
     // ========== 2) Rama: credencial revocada/vencida → notificación de reuso ==========
@@ -54,8 +104,7 @@ public sealed class RegistrosAccesoServiceTests
     public async Task Registrar_CredencialNoActiva_DevuelveCredencialRevocada_Y_NotificaTokenRevocado(string estado)
     {
         var persona = TestData.PersonaActiva(7);
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialEnEstado(estado, id: 3, personaId: 7, persona: persona));
+        ConCredencial(TestData.CredencialEnEstado(estado, id: 3, personaId: 7, persona: persona));
         _usuarios.Setup(m => m.ObtenerActivoPorRolAsync("GERENCIA", It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.UsuarioGerencia(1));
 
@@ -64,7 +113,7 @@ public sealed class RegistrosAccesoServiceTests
             .Callback<Notificacion, CancellationToken>((n, _) => notificacion = n)
             .Returns(Task.CompletedTask);
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("cualquier-token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.CredencialRevocada, resultado.CodigoError);
@@ -80,10 +129,9 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task Registrar_PersonaInactiva_DevuelvePersonaInactiva_SinNotificacion()
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialEnEstado("activa", id: 3, personaId: 9, persona: TestData.PersonaInactiva(9)));
+        ConCredencial(TestData.CredencialEnEstado("activa", id: 3, personaId: 9, persona: TestData.PersonaInactiva(9)));
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.PersonaInactiva, resultado.CodigoError);
@@ -94,12 +142,11 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task Registrar_ZonaNoExiste_DevuelveZonaNoAutorizada()
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialActiva(3, 7));
+        ConCredencial(TestData.CredencialActiva(3, 7));
         _zonas.Setup(m => m.FindByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ZonaAcceso?)null);
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.ZonaNoAutorizada, resultado.CodigoError);
@@ -109,12 +156,11 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task Registrar_ZonaInactiva_DevuelveZonaNoAutorizada()
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialActiva(3, 7));
+        ConCredencial(TestData.CredencialActiva(3, 7));
         _zonas.Setup(m => m.FindByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.ZonaInactiva(1));
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.ZonaNoAutorizada, resultado.CodigoError);
@@ -124,14 +170,13 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task Registrar_SinPerfilParaZona_DevuelveZonaNoAutorizada_SinNotificacion()
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialActiva(3, 7));
+        ConCredencial(TestData.CredencialActiva(3, 7));
         _zonas.Setup(m => m.FindByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.ZonaActiva(1));
         _perfiles.Setup(m => m.ListarAsync(7, 1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PerfilAcceso>());
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.ZonaNoAutorizada, resultado.CodigoError);
@@ -144,8 +189,7 @@ public sealed class RegistrosAccesoServiceTests
     [InlineData("futuro")]
     public async Task Registrar_PerfilFueraDeVigencia_DevuelveFueraVigencia_Y_NotificaFueraHorario(string caso)
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialActiva(3, 7));
+        ConCredencial(TestData.CredencialActiva(3, 7));
         _zonas.Setup(m => m.FindByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.ZonaActiva(1));
         var perfil = caso == "VENCIDO"
@@ -161,7 +205,7 @@ public sealed class RegistrosAccesoServiceTests
             .Callback<Notificacion, CancellationToken>((n, _) => notificacion = n)
             .Returns(Task.CompletedTask);
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.FueraVigencia, resultado.CodigoError);
@@ -174,8 +218,7 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task Registrar_ConUnPerfilVigenteEntreVarios_Fluye()
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialActiva(3, 7));
+        ConCredencial(TestData.CredencialActiva(3, 7));
         _zonas.Setup(m => m.FindByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.ZonaActiva(1));
         _perfiles.Setup(m => m.ListarAsync(7, 1, It.IsAny<CancellationToken>()))
@@ -189,7 +232,7 @@ public sealed class RegistrosAccesoServiceTests
         _registros.Setup(m => m.RegistrarConTransaccionAsync(It.IsAny<RegistroAcceso>(), It.IsAny<Notificacion?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((RegistroAcceso r, Notificacion? _, CancellationToken _) => { r.Id = 1; return r; });
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.True(resultado.Exitoso);
         Assert.Equal("ingreso", resultado.Dato!.Tipo);
@@ -221,8 +264,7 @@ public sealed class RegistrosAccesoServiceTests
 
     private async Task<(ServicioResultado<RegistroAccesoResultadoDto> Resultado, RegistroAcceso? Registro)> EjecutarAccesoExitoso(int ingresos, int egresos)
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialActiva(3, 7, persona: TestData.PersonaActiva(7, "Ana López")));
+        ConCredencial(TestData.CredencialActiva(3, 7, persona: TestData.PersonaActiva(7, "Ana López")));
         _zonas.Setup(m => m.FindByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.ZonaActiva(1, "Oficinas"));
         _perfiles.Setup(m => m.ListarAsync(7, 1, It.IsAny<CancellationToken>()))
@@ -235,7 +277,7 @@ public sealed class RegistrosAccesoServiceTests
             .Callback<RegistroAcceso, Notificacion?, CancellationToken>((r, _, _) => { r.Id = 99; pasado = r; })
             .ReturnsAsync((RegistroAcceso r, Notificacion? _, CancellationToken _) => r);
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
         return (resultado, pasado);
     }
 
@@ -243,8 +285,7 @@ public sealed class RegistrosAccesoServiceTests
     [Fact]
     public async Task Registrar_DobleIngresoPorCarrera_DevuelveConflicto()
     {
-        _credenciales.Setup(m => m.ObtenerPorTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestData.CredencialActiva(3, 7));
+        ConCredencial(TestData.CredencialActiva(3, 7));
         _zonas.Setup(m => m.FindByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.ZonaActiva(1));
         _perfiles.Setup(m => m.ListarAsync(7, 1, It.IsAny<CancellationToken>()))
@@ -254,7 +295,7 @@ public sealed class RegistrosAccesoServiceTests
         _registros.Setup(m => m.RegistrarConTransaccionAsync(It.IsAny<RegistroAcceso>(), It.IsAny<Notificacion?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((RegistroAcceso?)null); // UNIQUE uq_ingreso_diario → 409
 
-        var resultado = await Servicio().RegistrarAccesoAsync(Request("token", 1), UsuarioOperador);
+        var resultado = await Servicio().RegistrarAccesoAsync(Request(_sobre, 1), UsuarioOperador);
 
         Assert.False(resultado.Exitoso);
         Assert.Equal(CodigosError.Conflicto, resultado.CodigoError);

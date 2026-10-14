@@ -4,16 +4,19 @@ import { extractToken, ScanGate, TOKEN_RE } from '../src/app/core/util/token.ts'
 import { horaLocal, fechaLocal, hoyServidor } from '../src/app/core/util/time.ts';
 
 let n = 0; const ok = (name, fn) => { fn(); n++; console.log('  ✓', name); };
-const T = 'A'.repeat(32) + '0123456789abcdef'.repeat(2);   // 64 hex
-assert.equal(T.length, 64);
+const T = 'SCIAD1.' + Buffer.alloc(65, 7).toString('base64url');   // sobre cifrado: SCIAD1. + 87 base64url
+assert.equal(T.length, 94);
+const HEX64 = 'A'.repeat(32) + '0123456789abcdef'.repeat(2);    // formato antiguo
 
 console.log('token.ts');
-ok('acepta token puro', () => assert.equal(extractToken(T), T));
+ok('acepta el sobre puro', () => assert.equal(extractToken(T), T));
 ok('recorta espacios/saltos', () => assert.equal(extractToken('  ' + T + '\n'), T));
-ok('extrae token dentro de URL', () => assert.equal(extractToken('https://x.gt/c/' + T + '?a=1'), T));
-ok('rechaza 63 y 65 hex', () => { assert.equal(extractToken(T.slice(1)), null); assert.equal(extractToken(T + 'a'), null); });
-ok('rechaza texto no hex / vacío / null', () => { assert.equal(extractToken('hola'), null); assert.equal(extractToken(''), null); assert.equal(extractToken(null), null); });
-ok('rechaza 64 chars con una letra no-hex', () => assert.equal(extractToken('g' + T.slice(1)), null));
+ok('extrae el sobre dentro de URL', () => assert.equal(extractToken('https://x.gt/c/' + T + '?a=1'), T));
+ok('rechaza sobre truncado o con un carácter de más', () => { assert.equal(extractToken(T.slice(0, -1)), null); assert.equal(extractToken(T + 'a'), null); });
+ok('rechaza texto ajeno / vacío / null', () => { assert.equal(extractToken('hola'), null); assert.equal(extractToken(''), null); assert.equal(extractToken(null), null); });
+ok('rechaza un carácter fuera de base64url', () => assert.equal(extractToken(T.slice(0, -1) + '+'), null));
+ok('rechaza otra versión (SCIAD2.)', () => assert.equal(extractToken(T.replace('SCIAD1.', 'SCIAD2.')), null));
+ok('rechaza el formato antiguo de 64 hex', () => { assert.equal(extractToken(HEX64), null); assert.equal(TOKEN_RE.test(HEX64), false); });
 
 console.log('ScanGate');
 const g = new ScanGate({ holdMs: 2500, sameTokenMs: 15000 });

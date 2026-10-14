@@ -66,7 +66,7 @@ console.log('\n== CU-01 Usuarios ==');
   const des = await call('PATCH', `/api/usuarios/${idU}/estado`, { token: admin.token, body: { estado: 'inactivo' } });
   check('PATCH estado inactivo -> 200 (baja lógica)', des.status === 200 && des.body?.activo === false);
   check('PATCH estado inválido -> 400', (await call('PATCH', `/api/usuarios/${idU}/estado`, { token: admin.token, body: { estado: 'borrado' } })).status === 400);
-  check('GET list incluye el inactivo (soft-delete)', (await call(`GET`, '/api/usuarios', { token: admin.token })).body?.items?.some(u => u.email === 'admin2b@sciad.gt' && u.activo === false) === true);
+  check('GET list incluye el inactivo (soft-delete)', (await call(`GET`, '/api/usuarios?estado=todos', { token: admin.token })).body?.items?.some(u => u.email === 'admin2b@sciad.gt' && u.activo === false) === true);
 }
 
 console.log('\n== CU-02 Personas ==');
@@ -162,7 +162,7 @@ console.log('\n== CU-05 Credenciales QR ==');
 {
   // persona idP está activa y con perfil asignado (perfil en idpf que se borró, no importa)
   const gen = await call('POST', `/api/credenciales/${idP}/generar`, { token: admin.token });
-  check('generar -> 201 con token 64 hex', gen.status === 201 && /^[0-9a-f]{64}$/.test(gen.body?.token));
+  check('generar -> 201 con QR cifrado (SCIAD1.…) y sin el token completo', gen.status === 201 && /^SCIAD1\.[A-Za-z0-9_-]{87}$/.test(gen.body?.qr) && gen.body?.token === undefined && /^[0-9a-f]{8}$/.test(gen.body?.tokenCorto));
   check('  estado activa', gen.body?.estado === 'activa');
   const idC1 = gen.body?.id;
 
@@ -173,7 +173,7 @@ console.log('\n== CU-05 Credenciales QR ==');
   check('generar persona inexistente -> 404', (await call('POST', '/api/credenciales/999999/generar', { token: admin.token })).status === 404);
 
   const re = await call('POST', `/api/credenciales/${idC1}/reemitir`, { token: admin.token });
-  check('reemitir -> 201, token nuevo 64 hex', re.status === 201 && /^[0-9a-f]{64}$/.test(re.body?.token));
+  check('reemitir -> 201, QR nuevo cifrado (SCIAD1.…)', re.status === 201 && /^SCIAD1\.[A-Za-z0-9_-]{87}$/.test(re.body?.qr) && re.body?.qr !== gen.body?.qr);
   check('  nueva credencial estado activa, reemitidoDe = anterior', re.body?.estado === 'activa' && re.body?.reemitidoDe === +idC1);
 
   const hist = await call('GET', `/api/credenciales?personaId=${idP}`, { token: admin.token });

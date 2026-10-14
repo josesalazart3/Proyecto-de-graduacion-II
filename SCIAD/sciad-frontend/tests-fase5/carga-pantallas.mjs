@@ -53,7 +53,7 @@ const PANTALLAS = [
 const listo = () => {
   const main = document.querySelector('main') ?? document.body;
   if (main.querySelector('.skel, .sci-skel-row, .skeleton-line')) return false;
-  return !!main.querySelector('table tbody tr, sci-empty-state, sci-load-error, .event-list, .list > .row, .list > .note')
+  return !!main.querySelector('table tbody tr, sci-empty-state, sci-load-error, .event-list, .list > .row, .list > .item, .list > .note')
     || (main.querySelector('#zona-sel')?.options.length ?? 0) > 1;
 };
 const estado = (page) => page.evaluate(() => ({

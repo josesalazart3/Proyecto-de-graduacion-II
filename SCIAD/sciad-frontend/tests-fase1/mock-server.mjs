@@ -18,8 +18,8 @@ export function createServer() {
   ];
   const persona = { id: '7', nombre: 'Juan Pérez López', dpiCodigo: '2345678900101', tipo: 1, estado: 'activo' };
   const creds = [
-    { id: '1', personaId: '7', personaNombre: persona.nombre, dpiCodigo: persona.dpiCodigo, token: TOK.A, estado: 'activa', emitido: '2026-08-21', motivo: null, reemitidoDe: null },
-    { id: '2', personaId: '7', personaNombre: persona.nombre, dpiCodigo: persona.dpiCodigo, token: TOK.REV, estado: 'revocada', emitido: '2026-08-01', motivo: 'Pérdida', reemitidoDe: null },
+    { id: '1', personaId: '7', personaNombre: persona.nombre, dpiCodigo: persona.dpiCodigo, tokenCorto: 'c0ffee01', qr: TOK.A, estado: 'activa', emitido: '2026-08-21', motivo: null, reemitidoDe: null },
+    { id: '2', personaId: '7', personaNombre: persona.nombre, dpiCodigo: persona.dpiCodigo, tokenCorto: 'deadbe01', qr: TOK.REV, estado: 'revocada', emitido: '2026-08-01', motivo: 'Pérdida', reemitidoDe: null },
   ];
   const users = {
     'admin@sciad.gt': { rol: 'ADMIN', nombre: 'Lic. Marco Antonio Ortíz', token: 'ok.jwt' },
@@ -63,8 +63,8 @@ export function createServer() {
         const entry = { token, status: 0, code: null, tipo: null, at: Date.now() };
         log.push(entry);
         const fail = (status, code, detail) => { entry.status = status; entry.code = code; return problem(res, status, code, detail); };
-        if (!/^[0-9a-fA-F]{64}$/.test(token ?? '')) return fail(400, 'VALIDACION', 'Token inválido.');
-        const c = creds.find((x) => x.token === token);
+        if (!/^SCIAD1\.[A-Za-z0-9_-]{87}$/.test(token ?? '')) return fail(400, 'TOKEN_INVALIDO', 'El token de la credencial QR no es válido.');
+        const c = creds.find((x) => x.qr === token);
         if (!c) return fail(400, 'TOKEN_INVALIDO', 'El token de la credencial QR no es válido.');
         if (c.estado !== 'activa') return fail(400, 'CREDENCIAL_REVOCADA', 'La credencial está revocada o vencida.');
         const ing = movs.filter((m) => m.tipo === 'ingreso').length, egr = movs.filter((m) => m.tipo === 'egreso').length;

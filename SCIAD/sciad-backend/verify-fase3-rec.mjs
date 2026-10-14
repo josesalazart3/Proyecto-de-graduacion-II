@@ -167,14 +167,14 @@ console.log('== Administrador ==');
   const zona = await crearZona('C');
   await asignar(persona.id, zona.id);
   const gen = await call('POST', `/api/credenciales/${persona.id}/generar`, { token: A, body: {} });
-  check('credenciales: POST /credenciales/{personaId}/generar → 201 con token', gen.status === 201 && !!gen.body?.token);
+  check('credenciales: POST /credenciales/{personaId}/generar → 201 con QR cifrado', gen.status === 201 && !!gen.body?.qr);
   const credId = gen.body.id;
-  const tok = gen.body.token;
+  const tok = gen.body.qr;
   const re = await call('POST', `/api/credenciales/${credId}/reemitir`, { token: A, body: {} });
-  check('credenciales: POST /credenciales/{id}/reemitir → 201 nuevo token', re.status === 201 && re.body?.token !== tok);
+  check('credenciales: POST /credenciales/{id}/reemitir → 201 nuevo QR', re.status === 201 && !!re.body?.qr && re.body?.qr !== tok);
   // reemitir ya revoca la credencial original; revocamos ahora la reemitida
   const reId = re.body?.id ?? credId;
-  const reTok = re.body?.token ?? tok;
+  const reTok = re.body?.qr ?? tok;
   const rev = await call('POST', `/api/credenciales/${reId}/revocar`, { token: A, body: { motivo: 'Recorrido Fase 3' } });
   check('credenciales: POST /credenciales/{reemitId}/revocar → 200', rev.status === 200 && (rev.body === null || +rev.body?.id === +reId));
   // Guardamos el token reemitido para verificación (si se quisiera escanear tras revocar)
@@ -229,7 +229,7 @@ console.log('\n== Personal de Seguridad ==');
   const zona = await crearZona('SCAN');
   await asignar(persona.id, zona.id);
   const gen = await call('POST', `/api/credenciales/${persona.id}/generar`, { token: A, body: {} });
-  const tokenOk = gen.body.token;
+  const tokenOk = gen.body.qr;
   const ok = await call('POST', '/api/registros-acceso', { token: S, body: { token: tokenOk, zonaId: zona.id } });
   const autorizado = ok.status === 200 && ok.body?.estado === 'autorizado' && ok.body?.tipo === 'ingreso';
   check('escaneo válido: POST /registros-acceso → autorizado (ingreso)', autorizado);
@@ -246,7 +246,7 @@ console.log('\n== Personal de Seguridad ==');
   await asignar(persona.id, zona.id);
   const gen = await call('POST', `/api/credenciales/${persona.id}/generar`, { token: A, body: {} });
   const revog = await call('POST', `/api/credenciales/${gen.body.id}/revocar`, { token: A, body: { motivo: 'prueba' } });
-  const uso = await call('POST', '/api/registros-acceso', { token: S, body: { token: gen.body.token, zonaId: zona.id } });
+  const uso = await call('POST', '/api/registros-acceso', { token: S, body: { token: gen.body.qr, zonaId: zona.id } });
   check('escaneo inválido: credencial revocada en uso → 400 <> CREDENCIAL_REVOCADA', uso.status === 400 && JSON.stringify(uso.body).includes('CREDENCIAL_REVOCADA'));
 }
 

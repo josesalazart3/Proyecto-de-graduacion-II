@@ -54,14 +54,17 @@ public static class Harness
             ["AgregarNotificacionAsync"] = a => { notifs.Add((Notificacion)a[0]!); return null; },
             ["ListarDelDiaAsync"] = a => { var f = (DateOnly)a[1]!; return db.Where(r => r.Fecha == f).Select(r => { r.Persona = persona; r.Zona = zona; return r; }).OrderBy(r => r.Hora).ToList(); },
         });
+        // Clave fija SOLO para este arnés de pruebas (32 bytes en base64).
+        var cifrado = new CifradoQr("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
         var svc = new RegistrosAccesoService(
-            Fake.Make<ICredencialRepository>(new() { ["ObtenerPorTokenAsync"] = a => cred }),
+            Fake.Make<ICredencialRepository>(new() { ["FindByIdAsync"] = a => cred }),
             Fake.Make<IZonaRepository>(new() { ["FindByIdAsync"] = a => zona }),
             Fake.Make<IPerfilAccesoRepository>(new() { ["ListarAsync"] = a => new List<PerfilAcceso> { perfil } }),
             registros,
             Fake.Make<IUsuarioRepository>(new() { ["ObtenerActivoPorRolAsync"] = a => null }),
+            cifrado,
             NullLogger<RegistrosAccesoService>.Instance);
-        var req = new Sciad.Application.Dtos.RegistrosAcceso.RegistrarAccesoRequest { Token = cred.Token, ZonaId = 1 };
+        var req = new Sciad.Application.Dtos.RegistrosAcceso.RegistrarAccesoRequest { Token = cifrado.Cifrar(cred.Id, cred.Token), ZonaId = 1 };
 
         Console.WriteLine("[1] GuatemalaTime");
         clock.Now = Z("2026-08-22T05:59:59"); Check("05:59:59Z = 23:59:59 GT sigue siendo el día 21", GuatemalaTime.Hoy == new DateOnly(2026, 8, 21), GuatemalaTime.Now.ToString("s"));

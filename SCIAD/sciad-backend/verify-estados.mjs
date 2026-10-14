@@ -101,7 +101,7 @@ const perfil = (await call('POST', '/api/perfiles-acceso', { token: T, body: { p
 const cred = (await call('POST', `/api/credenciales/${per.id}/generar`, { token: T })).body;
 check('(prep) zona, persona, perfil y credencial creados', !!zona?.id && !!per?.id && !!perfil?.id && cred?.estado === 'activa');
 const registros = async () => (await call('GET', `/api/registros-acceso?personaId=${per.id}&tamanoPagina=1`, { token: T })).body?.total ?? -1;
-const escanear = () => call('POST', '/api/registros-acceso', { token: T, body: { token: cred.token, zonaId: +zona.id } });
+const escanear = () => call('POST', '/api/registros-acceso', { token: T, body: { token: cred.qr, zonaId: +zona.id } });
 
 const desP = await call('PATCH', `/api/personas/${per.id}/estado`, { token: T, body: { estado: 'inactivo' } });
 check('deshabilitar persona → 200 inactivo', desP.status === 200 && desP.body?.estado === 'inactivo');
