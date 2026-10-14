@@ -48,6 +48,8 @@ services:
       # saturar el pool (default 100). Ajustes de producción en DESPLIEGUE.md.
       - ConnectionStrings__Postgres=Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Maximum Pool Size=${POSTGRES_MAX_POOL:-400}
       - Jwt__Secreto=${SCIAD_JWT_SECRET}
+      # Clave del sobre cifrado de los QR (32 bytes en base64). Requerida: compose se detiene si falta.
+      - QR_ENCRYPTION_KEY=${QR_ENCRYPTION_KEY:?Defina QR_ENCRYPTION_KEY en .env (openssl rand -base64 32)}
       - Cors__Origins=${SCIAD_CORS_ORIGINS}
       # Hora (Guatemala) del cierre diario de auditoría. Por defecto 00:05; se cambia solo para probarlo (verify-cierre.mjs).
       - Auditoria__CierreDiario__Hora=${AUDITORIA_CIERRE_HORA:-00:05}

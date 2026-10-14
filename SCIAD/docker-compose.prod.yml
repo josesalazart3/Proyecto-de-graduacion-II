@@ -63,6 +63,8 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__Postgres=Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Maximum Pool Size=${POSTGRES_MAX_POOL:-200}
       - Jwt__Secreto=${SCIAD_JWT_SECRET}
+      # Clave del sobre cifrado de los QR (32 bytes en base64). Requerida: compose se detiene si falta.
+      - QR_ENCRYPTION_KEY=${QR_ENCRYPTION_KEY:?Defina QR_ENCRYPTION_KEY en .env.prod (openssl rand -base64 32)}
       # CORS: mismo origen en producción (nginx sirve SPA y /api) — se deja el dominio
       # explícito por compatibilidad si algún día el SPA se sirve desde otro origen.
       - Cors__Origins=${SCIAD_CORS_ORIGINS}

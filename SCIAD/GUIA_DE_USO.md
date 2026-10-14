@@ -4,6 +4,8 @@
 ```bash
 cd SCIAD
 cp .env.example .env                 # solo la primera vez (revisa las contraseñas)
+# solo la primera vez (o si tu .env es anterior): clave de los QR cifrados, obligatoria; no se muestra en pantalla
+grep -q '^QR_ENCRYPTION_KEY=.\+' .env || { sed -i '/^QR_ENCRYPTION_KEY=/d' .env; echo "QR_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> .env; }
 docker compose up --build -d         # base de datos + API + frontend
 node sciad-backend/seed-demo.mjs     # crea zonas, personas, perfiles y credenciales de demostración
 ```
@@ -50,6 +52,13 @@ Además, los puertos de desarrollo (8080 y 3000) solo escuchan en `127.0.0.1`: n
   (hay que retirarlo y volver a presentarlo; además hay una espera de 15 s para el mismo código).
 - **Un solo ingreso por persona y día** (regla del DERCAS, CU-04): el 3.er escaneo del día devuelve «Ingreso ya registrado» (409) hasta mañana.
   Quien entra a una 2.ª zona el mismo día, o sale y vuelve a entrar, también recibe ese aviso. Para repetir pruebas el mismo día usa otra persona.
+- **QR cifrado**: el QR de cada credencial contiene un sobre cifrado y autenticado (AES-256-GCM) que empieza con
+  `SCIAD1.`; el servidor lo descifra y valida al escanear. Un QR alterado, ajeno o del formato anterior (64 caracteres
+  hexadecimales) se rechaza como «Credencial no reconocida» o «Código no reconocido»: **los QR antiguos dejaron de ser válidos**
+  y hay que emitir credenciales nuevas. Las pantallas y el gafete muestran solo un código corto (8 caracteres); en
+  **Registro manual (sin cámara)** se pega el texto completo del QR (por ejemplo, copiado desde la app de cámara del teléfono).
+- **La clave `QR_ENCRYPTION_KEY`** (en `.env`) es obligatoria: sin ella el backend no arranca. **Perderla o cambiarla
+  invalida todas las credenciales emitidas**; guárdala en un gestor de contraseñas y respáldala junto con el archivo de entorno.
 - **Horas**: el sistema trabaja en **hora de Guatemala (UTC-6)**; el día cambia a medianoche local, no a las 18:00.
 - Las listas (historial, notificaciones, auditoría, reportes) muestran hasta **100** filas; usa los filtros para acotar.
 - **Accesos del turno** (y **Accesos de hoy** del Admin) muestra **una fila por persona y zona** con su último movimiento del día

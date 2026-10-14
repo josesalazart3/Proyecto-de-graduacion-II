@@ -50,9 +50,29 @@ cp .env.prod.example .env.prod
 # editar con valores reales:
 #   POSTGRES_PASSWORD  →  openssl rand -base64 24
 #   SCIAD_JWT_SECRET   →  openssl rand -base64 48
+#   QR_ENCRYPTION_KEY  →  openssl rand -base64 32   (obligatoria, ver §2.4)
 #   SCIAD_CORS_ORIGINS →  https://sciad.gt
 nano .env.prod && chmod 600 .env.prod     # .env.prod está en .gitignore
 ```
+
+### 2.4 Clave de las credenciales QR (`QR_ENCRYPTION_KEY`)
+El QR de cada credencial no lleva el token en claro: lleva un **sobre cifrado y autenticado** (AES-256-GCM),
+`SCIAD1.` + base64url(identificador de clave ‖ id de la credencial ‖ nonce ‖ token cifrado ‖ etiqueta). El servidor lo
+descifra y verifica al escanear; un QR alterado, de otra versión o cifrado con otra clave se rechaza igual que un token
+inexistente (`TOKEN_INVALIDO`). La base de datos sigue guardando el token aleatorio; el sobre no se almacena.
+
+- Genérela **en el VPS** sin mostrarla en pantalla:
+  ```bash
+  # solo la crea si aún no existe (volver a ejecutarlo NO la cambia)
+  grep -q '^QR_ENCRYPTION_KEY=.\+' .env.prod || { sed -i '/^QR_ENCRYPTION_KEY=/d' .env.prod; echo "QR_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> .env.prod; }
+  grep -c '^QR_ENCRYPTION_KEY=.\+' .env.prod     # debe imprimir 1 (no muestra la clave)
+  ```
+- Es **obligatoria**: si falta o no mide 32 bytes, `docker compose` se detiene y el backend no arranca (mensaje claro,
+  sin mostrar la clave).
+- **Perderla o cambiarla invalida todas las credenciales emitidas** (habría que reemitirlas). Guárdela en el gestor de
+  contraseñas y respáldela junto con la copia de seguridad de `.env.prod` (§7.2).
+- Los QR del formato anterior (64 caracteres hexadecimales) **ya no son válidos**. Antes del lanzamiento la base de
+  producción se reinicia con `scripts/reset-datos.sh`, que emite credenciales nuevas con el formato cifrado.
 
 ---
 
@@ -161,6 +181,8 @@ gunzip < /var/backups/sciad/sciad-AAAAMMDD.sql.gz | \
 - **Copia off-site**: >= 1 copia semanal fuera del VPS (p. ej. `rclone` a un bucket privado) — protege frente a
   pérdida total del VPS.
 - **Backup previo a toda migración** (§6).
+- **Respaldar `.env.prod`** (cifrado, fuera del VPS y en el gestor de contraseñas): sin `QR_ENCRYPTION_KEY` un backup de
+  la base restaura las credenciales, pero ningún QR impreso vuelve a funcionar.
 - **Verificar restauración** periódicamente (cada mes, restaurar en un entorno temporal) — un backup que no se puede
   restaurar no sirve.
 - **Permisos**: `/var/backups/sciad` `chmod 700`, crontab de `root` (datos personales → Decreto 57-2008).
@@ -205,3 +227,5 @@ Todos los servicios usan `restart: unless-stopped` → tras reiniciar el VPS, el
 - [ ] Login con contraseña errada ×5 → 6.º intento **429** (SEC-04 detrás de nginx).
 - [ ] Cron de backup ejecutado una vez y archivo `.sql.gz` inspeccionado.
 - [ ] Backend arranca con `Jwt__Secreto` ≥ 32 chars (fail-fast de la app).
+- [ ] `QR_ENCRYPTION_KEY` generada en el VPS (32 bytes base64), respaldada en el gestor de contraseñas y con la copia de `.env.prod`.
+- [ ] Una credencial nueva escaneada con el teléfono entra (verde) y un QR antiguo de 64 hex es rechazado.
