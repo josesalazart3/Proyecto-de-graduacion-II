@@ -10,7 +10,7 @@ public class CredencialQr
     public int PersonaId { get; set; }
     public Persona Persona { get; set; } = null!;
 
-    /// <summary>Token cifrado CHAR(64) hex (SHA-256 + salt). UNIQUE.</summary>
+    /// <summary>Token aleatorio CHAR(64) hex (32 bytes CSPRNG). UNIQUE. El QR lo lleva dentro del sobre AES-256-GCM.</summary>
     public string Token { get; set; } = null!;
 
     /// <summary>"activa" | "revocada" | "vencida" (soft delete).</summary>

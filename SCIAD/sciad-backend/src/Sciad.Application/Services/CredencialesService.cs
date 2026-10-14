@@ -8,10 +8,11 @@ using Sciad.Domain.Time;
 namespace Sciad.Application.Services;
 
 /// <summary>
-/// Credenciales QR (CU-03): generación y reemisión de tokens cifrados de 64 caracteres hex
+/// Credenciales QR (CU-03): generación y reemisión de tokens aleatorios de 64 caracteres hex
 /// (RNF-01). Aparte del requisito mínimo del plan se bloquea la duplicidad de credencial activa
 /// (409) — dos credenciales activas para una misma persona son una inconsistencia de auditoría
-/// (ver bitácora 2B). Nunca se borra físicamente: solo cambia <c>estado</c>.
+/// (ver bitácora 2B). Nunca se borra físicamente: solo cambia <c>estado</c>. El QR no lleva el token en claro sino el
+/// sobre AES-256-GCM de <see cref="CifradoQr"/>.
 /// </summary>
 public sealed class CredencialesService : ICredencialesService
 {
@@ -20,15 +21,18 @@ public sealed class CredencialesService : ICredencialesService
 
     private readonly ICredencialRepository _credenciales;
     private readonly IPersonaRepository _personas;
+    private readonly ICifradoQr _cifrado;
     private readonly ILogger<CredencialesService> _logger;
 
     public CredencialesService(
         ICredencialRepository credenciales,
         IPersonaRepository personas,
+        ICifradoQr cifrado,
         ILogger<CredencialesService> logger)
     {
         _credenciales = credenciales;
         _personas = personas;
+        _cifrado = cifrado;
         _logger = logger;
     }
 
@@ -65,7 +69,7 @@ public sealed class CredencialesService : ICredencialesService
         }, ct);
 
         _logger.LogInformation("Credencial generada (id={CredencialId}, persona={PersonaId}).", creada.Id, personaId);
-        return ServicioResultado<CredencialDto>.Ok(CredencialDto.From(creada));
+        return ServicioResultado<CredencialDto>.Ok(Dto(creada));
     }
 
     public async Task<ServicioResultado<CredencialDto>> ReemitirAsync(
@@ -116,7 +120,7 @@ public sealed class CredencialesService : ICredencialesService
         _logger.LogInformation(
             "Credencial reemitida (nueva={NuevaId}, anterior={AnteriorId}, persona={PersonaId}).",
             nueva.Id, anterior.Id, anterior.PersonaId);
-        return ServicioResultado<CredencialDto>.Ok(CredencialDto.From(nueva));
+        return ServicioResultado<CredencialDto>.Ok(Dto(nueva));
     }
 
     public async Task<ServicioResultado<CredencialDto>> RevocarAsync(
@@ -141,7 +145,7 @@ public sealed class CredencialesService : ICredencialesService
         _logger.LogInformation(
             "Credencial {CredencialId} revocada (persona={PersonaId}, motivo={Motivo}).",
             id, credencial.PersonaId, motivo);
-        return ServicioResultado<CredencialDto>.Ok(CredencialDto.From(actualizada));
+        return ServicioResultado<CredencialDto>.Ok(Dto(actualizada));
     }
 
     public async Task<ServicioResultado<List<CredencialDto>>> ListarAsync(
@@ -158,12 +162,15 @@ public sealed class CredencialesService : ICredencialesService
 
             var historial = await _credenciales.ListarPorPersonaAsync(personaId.Value, ct);
             return ServicioResultado<List<CredencialDto>>.Ok(
-                historial.Select(CredencialDto.From).ToList());
+                historial.Select(Dto).ToList());
         }
 
         var todas = await _credenciales.ListarAsync(ct);
-        return ServicioResultado<List<CredencialDto>>.Ok(todas.Select(CredencialDto.From).ToList());
+        return ServicioResultado<List<CredencialDto>>.Ok(todas.Select(Dto).ToList());
     }
+
+    /// <summary>DTO con el sobre cifrado del QR (el token completo no sale del servidor).</summary>
+    private CredencialDto Dto(CredencialQr c) => CredencialDto.From(c, _cifrado.Cifrar(c.Id, c.Token));
 
     private static DateOnly Hoy() => GuatemalaTime.Hoy;
 

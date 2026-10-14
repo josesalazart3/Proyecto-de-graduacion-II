@@ -45,6 +45,11 @@ var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOption
 jwt.Validar(); // lanza en arranque si SCIAD_JWT_SECRET falta o es < 32 chars
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
+// ---------- Clave del sobre cifrado de las credenciales QR (fail-fast) ----------
+// Lanza en arranque si QR_ENCRYPTION_KEY falta o no es una clave de 32 bytes en base64 (el mensaje nunca incluye la clave).
+builder.Services.AddSingleton<ICifradoQr>(new Sciad.Application.Services.CifradoQr(
+    builder.Configuration[Sciad.Application.Services.CifradoQr.VariableEntorno]));
+
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 

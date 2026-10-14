@@ -36,7 +36,7 @@ public sealed class CredencialesController : ControllerBase
     }
 
     /// <summary>
-    /// Genera la primera credencial para una persona activa (token 64 hex criptográfico).
+    /// Genera la primera credencial para una persona activa (token aleatorio; el QR lleva el sobre cifrado).
     /// 409 si la persona ya tiene una credencial activa (use reemisión).
     /// </summary>
     [HttpPost("{personaId:int}/generar")]

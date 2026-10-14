@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Sciad.Application.Dtos.Common;
 using Sciad.Application.Dtos.RegistrosAcceso;
@@ -9,7 +10,7 @@ namespace Sciad.Application.Services;
 
 /// <summary>
 /// Núcleo de control de acceso (Fase 2C — CU-04/CU-05). Implementa paso a paso el diagrama de
-/// actividad y de secuencia de referencia: valida token QR (RNF-01) → persona activa → zona activa →
+/// actividad y de secuencia de referencia: valida el sobre cifrado del QR (RNF-01) → persona activa → zona activa →
 /// perfil vigente → infiere ingreso/egreso → persiste en transacción ACID (RNF-06) con la restricción
 /// UNIQUE de base de datos como última línea de defensa contra el doble ingreso (CA-05), y dispara las
 /// notificaciones automáticas del momento del escaneo (CU-09).
@@ -31,6 +32,7 @@ public sealed class RegistrosAccesoService : IRegistrosAccesoService
     private readonly IPerfilAccesoRepository _perfiles;
     private readonly IRegistroAccesoRepository _registros;
     private readonly IUsuarioRepository _usuarios;
+    private readonly ICifradoQr _cifrado;
     private readonly ILogger<RegistrosAccesoService> _logger;
 
     public RegistrosAccesoService(
@@ -39,6 +41,7 @@ public sealed class RegistrosAccesoService : IRegistrosAccesoService
         IPerfilAccesoRepository perfiles,
         IRegistroAccesoRepository registros,
         IUsuarioRepository usuarios,
+        ICifradoQr cifrado,
         ILogger<RegistrosAccesoService> logger)
     {
         _credenciales = credenciales;
@@ -46,6 +49,7 @@ public sealed class RegistrosAccesoService : IRegistrosAccesoService
         _perfiles = perfiles;
         _registros = registros;
         _usuarios = usuarios;
+        _cifrado = cifrado;
         _logger = logger;
     }
 
@@ -58,9 +62,12 @@ public sealed class RegistrosAccesoService : IRegistrosAccesoService
         var ahora = GuatemalaTime.FromUtc(ahoraUtc);
         var hoy = DateOnly.FromDateTime(ahora);
 
-        // 1) Token QR existe (RNF-01). Devuelve la credencial en cualquier estado + persona.
-        var credencial = await _credenciales.ObtenerPorTokenAsync(request.Token, ct);
-        if (credencial is null)
+        // 1) Sobre del QR válido (RNF-01): descifra y verifica la etiqueta GCM, busca la credencial por su id (en cualquier
+        //    estado, con la persona) y compara el token en tiempo constante. Cualquier fallo responde igual (no revela el motivo).
+        var credencial = _cifrado.TryDescifrar(request.Token, out var credencialId, out var token)
+            ? await _credenciales.FindByIdAsync(credencialId, ct)
+            : null;
+        if (credencial is null || !CryptographicOperations.FixedTimeEquals(token, Convert.FromHexString(credencial.Token)))
         {
             return ServicioResultado<RegistroAccesoResultadoDto>.Fallo(
                 CodigosError.TokenInvalido, "El token de la credencial QR no es válido.");
