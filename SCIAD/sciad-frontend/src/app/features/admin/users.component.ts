@@ -141,15 +141,13 @@ const ROL_OPTIONS = (Object.keys(ROL_LABELS) as Rol[]).map((r) => ({
         <sci-input formControlName="email" label="Correo electrónico" [error]="f('email')" />
         <sci-input formControlName="puesto" label="Puesto" />
         <sci-select formControlName="rol" label="Rol" [options]="rolOptions" />
-        @if (!editing()) {
-          <sci-input
-            formControlName="password"
-            type="password"
-            label="Contraseña"
-            placeholder="Mínimo 8 caracteres"
-            [error]="f('password')"
-          />
-        }
+        <sci-input
+          formControlName="password"
+          type="password"
+          [label]="editing() ? 'Nueva contraseña (dejar en blanco para no cambiarla)' : 'Contraseña'"
+          placeholder="Mínimo 8 caracteres"
+          [error]="f('password')"
+        />
         <div sci-modal-actions>
           <button sci-btn variant="ghost" size="md" (click)="modalOpen.set(false)">Cancelar</button>
           <button sci-btn variant="primary" size="md" type="submit" [loading]="saving()">
@@ -293,7 +291,9 @@ export class UsersComponent implements OnInit {
       email: u.email,
       puesto: u.puesto,
       rol: u.rol,
+      password: '',
     });
+    this.form.controls.password.markAsUntouched();
     this.modalOpen.set(true);
   }
 
@@ -315,9 +315,9 @@ export class UsersComponent implements OnInit {
       fechaCreacion: editing?.fechaCreacion ?? new Date().toISOString(),
     };
     this.saving.set(true);
-    // Al crear el backend exige password (>= 8). Al editar es opcional y no se manda.
+    // Al crear el backend exige password (>= 8). Al editar es opcional: solo se manda si se escribió una nueva.
     const req = editing
-      ? this.service.update(payload)
+      ? this.service.update(payload, v.password || undefined)
       : this.service.create({ ...payload, password: v.password ?? '' });
     req.subscribe({
       next: () => {

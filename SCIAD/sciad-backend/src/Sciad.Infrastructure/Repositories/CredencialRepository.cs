@@ -53,4 +53,12 @@ public sealed class CredencialRepository : ICredencialRepository
         await _db.SaveChangesAsync(ct);
         return credencial;
     }
+
+    public async Task<CredencialQr> ReemitirAsync(CredencialQr anterior, CredencialQr nueva, CancellationToken ct = default)
+    {
+        // `anterior` viene rastreada por FindByIdAsync; un único SaveChanges es atómico (transacción implícita de EF Core).
+        _db.CredencialesQr.Add(nueva);
+        await _db.SaveChangesAsync(ct);
+        return nueva;
+    }
 }

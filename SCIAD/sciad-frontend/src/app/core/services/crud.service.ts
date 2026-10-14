@@ -60,13 +60,14 @@ export class UsersService {
       puesto: u.puesto,
     });
   }
-  /** PUT /api/usuarios/{id}. */
-  update(u: Usuario): Observable<Usuario> {
+  /** PUT /api/usuarios/{id}. `password` es opcional: si no se envía, la contraseña no cambia. */
+  update(u: Usuario, password?: string): Observable<Usuario> {
     return this.http.put<Usuario>(`${API}/usuarios/${u.id}`, {
       nombre: u.nombre,
       correo: u.email,
       rol: u.rol,
       puesto: u.puesto,
+      ...(password ? { password } : {}),
     });
   }
   /** PATCH /api/usuarios/{id}/estado {estado} (baja lógica). */

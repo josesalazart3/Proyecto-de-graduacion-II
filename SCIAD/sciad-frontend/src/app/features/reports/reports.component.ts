@@ -129,12 +129,15 @@ export class ReportsComponent implements OnInit {
   protected readonly personas = signal<Persona[]>([]);
   protected readonly zonas = signal<Zona[]>([]);
 
-  protected readonly personaOptions = computed(() =>
-    this.personas().map((p) => ({ value: String(p.id), label: p.nombre })),
-  );
-  protected readonly zonaOptions = computed(() =>
-    this.zonas().map((z) => ({ value: String(z.id), label: z.nombre })),
-  );
+  // Primera opción con valor vacío = sin filtro (es también el valor por defecto del formulario).
+  protected readonly personaOptions = computed(() => [
+    { value: '', label: 'Todas las personas' },
+    ...this.personas().map((p) => ({ value: String(p.id), label: p.nombre })),
+  ]);
+  protected readonly zonaOptions = computed(() => [
+    { value: '', label: 'Todas las zonas' },
+    ...this.zonas().map((z) => ({ value: String(z.id), label: z.nombre })),
+  ]);
 
   protected readonly form = this.fb.group({
     id: [''],

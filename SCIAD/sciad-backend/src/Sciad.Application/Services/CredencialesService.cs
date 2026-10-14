@@ -15,6 +15,9 @@ namespace Sciad.Application.Services;
 /// </summary>
 public sealed class CredencialesService : ICredencialesService
 {
+    /// <summary>Motivo con que queda revocada la credencial reemplazada en una reemisión.</summary>
+    public const string MotivoReemision = "Reemisión";
+
     private readonly ICredencialRepository _credenciales;
     private readonly IPersonaRepository _personas;
     private readonly ILogger<CredencialesService> _logger;
@@ -74,12 +77,6 @@ public sealed class CredencialesService : ICredencialesService
             return ServicioResultado<CredencialDto>.Fallo(CodigosError.NoEncontrado, "Credencial no encontrada.");
         }
 
-        if (string.Equals(anterior.Estado, "revocada", StringComparison.OrdinalIgnoreCase))
-        {
-            return ServicioResultado<CredencialDto>.Fallo(
-                CodigosError.Validacion, "No se puede reemitir una credencial ya revocada.");
-        }
-
         var persona = await _personas.FindByIdAsync(anterior.PersonaId, ct);
         if (persona is null)
         {
@@ -92,11 +89,22 @@ public sealed class CredencialesService : ICredencialesService
                 CodigosError.Validacion, "No se puede reemitir una credencial para una persona inactiva.");
         }
 
-        // Revoca la anterior y crea la nueva con la referencia de trazabilidad reemitido_de.
-        anterior.Estado = "revocada";
-        await _credenciales.ActualizarAsync(anterior, ct);
+        if (string.Equals(anterior.Estado, "activa", StringComparison.OrdinalIgnoreCase))
+        {
+            // La credencial vigente se revoca con motivo de trazabilidad.
+            anterior.Estado = "revocada";
+            anterior.Motivo = MotivoReemision;
+        }
+        else if (await _credenciales.ObtenerActivaPorPersonaAsync(anterior.PersonaId, ct) is not null)
+        {
+            // Desde una credencial ya revocada solo se reemite si la persona no tiene otra activa.
+            return ServicioResultado<CredencialDto>.Fallo(
+                CodigosError.Conflicto,
+                "La persona ya tiene una credencial activa. Reemita esa credencial para reemplazarla.");
+        }
 
-        var nueva = await _credenciales.AgregarAsync(new CredencialQr
+        // Revocación de la anterior y alta de la nueva en una sola transacción (reemitido_de = trazabilidad).
+        var nueva = await _credenciales.ReemitirAsync(anterior, new CredencialQr
         {
             PersonaId = anterior.PersonaId,
             Token = GenerarTokenHex64(),

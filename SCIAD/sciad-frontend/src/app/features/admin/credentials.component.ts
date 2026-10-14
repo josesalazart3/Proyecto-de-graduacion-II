@@ -91,9 +91,10 @@ function badgeFor(estado: string): StatusKey {
                     <td>
                       <div class="cell-actions">
                         @if (c.estado === 'activa') {
-                          <button class="sci-btn-ghost" aria-label="Revocar" (click)="openRevoke(c)"><sci-icon name="trash" [size]="17" /></button>
-                        } @else {
-                          <button class="sci-btn-ghost" aria-label="Reemitir" (click)="reissue(c)"><sci-icon name="refresh" [size]="17" /></button>
+                          <button class="sci-btn-ghost" aria-label="Revocar" title="Revocar" (click)="openRevoke(c)"><sci-icon name="trash" [size]="17" /></button>
+                        }
+                        @if (puedeReemitir(c)) {
+                          <button class="sci-btn-ghost" aria-label="Reemitir" title="Reemitir" (click)="reissue(c)"><sci-icon name="refresh" [size]="17" /></button>
                         }
                         <button class="sci-btn-ghost" aria-label="Ver" (click)="previewToken(c)"><sci-icon name="eye" [size]="17" /></button>
                       </div>
@@ -111,7 +112,7 @@ function badgeFor(estado: string): StatusKey {
     <sci-modal [open]="createOpen()" title="Generar credencial" (closed)="createOpen.set(false)">
       <form [formGroup]="createForm" (ngSubmit)="generate()" class="modal-form">
         <sci-select formControlName="personaId" label="Persona" [options]="personaOptions()" [error]="cf('personaId')" />
-        <p class="modal-note">Se emitirá la primera credencial de la persona seleccionada. Si ya tiene una activa, el backend rechaza y hay que reemitir.</p>
+        <p class="modal-note">Se emitirá la primera credencial de la persona seleccionada. Si ya tiene una credencial activa, use «Reemitir» en su fila para reemplazarla.</p>
         <div sci-modal-actions>
           <button sci-btn variant="ghost" size="md" (click)="createOpen.set(false)">Cancelar</button>
           <button sci-btn variant="primary" size="md" type="submit" [loading]="saving()">Generar</button>
@@ -302,13 +303,24 @@ export class CredentialsComponent implements OnInit {
     });
   }
 
+  /** Reemitir: la credencial activa, o una revocada cuando la persona ya no tiene ninguna activa. */
+  protected puedeReemitir(c: Credencial): boolean {
+    if (c.estado === 'activa') return true;
+    const masReciente = this.credenciales().find((x) => x.personaId === c.personaId);
+    return masReciente?.id === c.id && !this.credenciales().some((x) => x.personaId === c.personaId && x.estado === 'activa');
+  }
+
   protected reissue(c: Credencial): void {
+    const aviso = c.estado === 'activa'
+      ? `¿Reemitir la credencial de ${c.personaNombre}? La credencial actual quedará revocada (motivo «Reemisión») y se emitirá una nueva con otro código QR.`
+      : `¿Emitir una nueva credencial para ${c.personaNombre} a partir de esta credencial revocada?`;
+    if (!window.confirm(aviso)) return;
     this.service.reemitir(c.id).subscribe({
       next: (updated) => {
         this.toast.success('Credencial reemitida', `Nuevo QR ${updated.token.slice(0, 8)}…`);
         this.load();
       },
-      error: () => this.toast.error('Error', 'No se pudo reemitir.'),
+      error: (e) => this.toast.error('No se pudo reemitir', this.errorMessage(e) ?? 'Intente de nuevo.'),
     });
   }
 

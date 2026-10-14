@@ -53,13 +53,15 @@ public sealed class CredencialesController : ControllerBase
     }
 
     /// <summary>
-    /// Reemite una credencial: revoca la anterior (<c>estado = revocada</c>) y crea una nueva
-    /// con la referencia <c>reemitido_de</c> (trazabilidad). 400 si la anterior ya está revocada.
+    /// Reemite una credencial: si está activa la revoca (motivo «Reemisión») y crea una nueva con la
+    /// referencia <c>reemitido_de</c> (trazabilidad), todo en una transacción. Desde una revocada solo
+    /// procede si la persona no tiene otra activa (409). 400 si la persona está inactiva.
     /// </summary>
     [HttpPost("{id:int}/reemitir")]
     [ProducesResponseType(typeof(CredencialDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Reemitir(int id, CancellationToken ct)
     {
         var resultado = await _credenciales.ReemitirAsync(id, ct);

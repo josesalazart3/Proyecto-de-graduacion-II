@@ -1,6 +1,6 @@
 // Campos de formulario con label, helper y error (ControlValueAccessor).
 // Compatibles con reactive forms: <sci-input formControlName="x" label="..." />
-import { booleanAttribute, Component, Directive, forwardRef, input } from '@angular/core';
+import { booleanAttribute, ChangeDetectorRef, Component, Directive, forwardRef, inject, input } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 const FIELD_STYLES = `
@@ -42,9 +42,12 @@ export abstract class FieldBase<T> implements ControlValueAccessor {
 
   private onChange: (v: T | null) => void = () => {};
   private onTouched: () => void = () => {};
+  private readonly cdr = inject(ChangeDetectorRef);
 
+  // Sin zone.js, un valor puesto desde el formulario (patchValue al abrir «Editar») no se pintaba hasta otro evento.
   writeValue(v: T | null): void {
     this.value = v;
+    this.cdr.markForCheck();
   }
   registerOnChange(fn: (v: T | null) => void): void {
     this.onChange = fn;
@@ -173,7 +176,8 @@ export class SciInput extends FieldBase<string> {
           <option value="" disabled selected>{{ placeholder() }}</option>
         }
         @for (opt of options(); track opt.value) {
-          <option [value]="opt.value">{{ opt.label }}</option>
+          <!-- [selected]: el value del <select> se asigna antes de crear las opciones; sin esto se veía la primera. -->
+          <option [value]="opt.value" [selected]="opt.value === (value ?? '')">{{ opt.label }}</option>
         }
       </select>
       @if (helper() && !error()) {

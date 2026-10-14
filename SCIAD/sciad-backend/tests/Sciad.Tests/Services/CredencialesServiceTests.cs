@@ -10,7 +10,7 @@ namespace Sciad.Tests.Services;
 
 /// <summary>
 /// Credenciales QR (CU-03): generación, reemisión y revocación. Aquí se cubren las reglas de
-/// bloqueo (persona inactiva, credencial activa duplicada, reemisión de una revocada), la
+/// bloqueo (persona inactiva, credencial activa duplicada, reemisión desde una revocada), la
 /// trazabilidad <c>reemitido_de</c> y el formato del token (64 hex, SEC-06).
 /// </summary>
 public sealed class CredencialesServiceTests
@@ -102,15 +102,38 @@ public sealed class CredencialesServiceTests
     }
 
     [Fact]
-    public async Task Reemitir_CredencialYaRevocada_DevuelveValidacion()
+    public async Task Reemitir_RevocadaConOtraActiva_DevuelveConflicto()
     {
         _credenciales.Setup(m => m.FindByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestData.CredencialEnEstado("revocada", 5, 9));
+        _personas.Setup(m => m.FindByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(TestData.PersonaActiva(9));
+        _credenciales.Setup(m => m.ObtenerActivaPorPersonaAsync(9, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TestData.CredencialActiva(8, 9));
 
         var resultado = await Servicio().ReemitirAsync(5);
 
         Assert.False(resultado.Exitoso);
-        Assert.Equal(CodigosError.Validacion, resultado.CodigoError);
+        Assert.Equal(CodigosError.Conflicto, resultado.CodigoError);
+        _credenciales.Verify(m => m.ReemitirAsync(It.IsAny<CredencialQr>(), It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Reemitir_RevocadaSinActiva_EmiteNuevaSinTocarLaAnterior()
+    {
+        var anterior = TestData.CredencialEnEstado("revocada", 5, 9);
+        anterior.Motivo = "Extravío";
+        _credenciales.Setup(m => m.FindByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(anterior);
+        _personas.Setup(m => m.FindByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(TestData.PersonaActiva(9));
+        _credenciales.Setup(m => m.ObtenerActivaPorPersonaAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync((CredencialQr?)null);
+        _credenciales.Setup(m => m.ReemitirAsync(anterior, It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CredencialQr _, CredencialQr n, CancellationToken _) => { n.Id = 6; return n; });
+
+        var resultado = await Servicio().ReemitirAsync(5);
+
+        Assert.True(resultado.Exitoso);
+        Assert.Equal("Extravío", anterior.Motivo); // conserva el motivo original de la revocación
+        Assert.Equal(5, resultado.Dato!.ReemitidoDe);
+        Assert.Equal("activa", resultado.Dato.Estado);
     }
 
     [Fact]
@@ -132,15 +155,17 @@ public sealed class CredencialesServiceTests
         var anterior = TestData.CredencialActiva(5, 9, persona: TestData.PersonaActiva(9));
         _credenciales.Setup(m => m.FindByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(anterior);
         _personas.Setup(m => m.FindByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(TestData.PersonaActiva(9));
-        _credenciales.Setup(m => m.ActualizarAsync(anterior, It.IsAny<CancellationToken>())).ReturnsAsync(anterior);
-        _credenciales.Setup(m => m.AgregarAsync(It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CredencialQr c, CancellationToken _) => { c.Id = 6; return c; });
+        _credenciales.Setup(m => m.ReemitirAsync(anterior, It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CredencialQr _, CredencialQr n, CancellationToken _) => { n.Id = 6; return n; });
 
         var resultado = await Servicio().ReemitirAsync(5);
 
         Assert.True(resultado.Exitoso);
         Assert.Equal("revocada", anterior.Estado); // la anterior se revoca
-        _credenciales.Verify(m => m.ActualizarAsync(anterior, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(CredencialesService.MotivoReemision, anterior.Motivo);
+        // Revocación y alta van juntas en una sola operación del repositorio (transacción).
+        _credenciales.Verify(m => m.ReemitirAsync(anterior, It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()), Times.Once);
+        _credenciales.Verify(m => m.ActualizarAsync(It.IsAny<CredencialQr>(), It.IsAny<CancellationToken>()), Times.Never);
         var nueva = resultado.Dato!;
         Assert.Matches(TokenHex64, nueva.Token);
         Assert.Equal(5, nueva.ReemitidoDe); // trazabilidad
