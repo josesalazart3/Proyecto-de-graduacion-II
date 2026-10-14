@@ -29,8 +29,8 @@ docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
 3. Instalar como app: Android/Chrome → ⋮ → *Agregar a la pantalla principal* · iPhone/Safari → Compartir → *Agregar a inicio*.
 4. Al terminar: `docker compose -f docker-compose.yml -f docker-compose.tunnel.yml stop tunnel`.
 
-🔐 **Antes de encender el túnel, cambia las contraseñas de las 3 cuentas demo** (`sciad123` es pública en esta guía): entra como Admin → **Usuarios** → editar → nueva contraseña (la API
-pide ≥ 8 caracteres; usa una larga). En el stack de desarrollo las cuentas demo existen por diseño; en **producción no se crean** (el administrador inicial se declara con `SCIAD_ADMIN_EMAIL` / `SCIAD_ADMIN_PASSWORD`).
+🔐 **Antes de encender el túnel, cambia las contraseñas de las 3 cuentas demo** (`sciad123` es pública en esta guía): entra como Admin → **Usuarios** → lápiz (**Editar usuario**) →
+**Nueva contraseña (dejar en blanco para no cambiarla)** → **Guardar** (mínimo 8 caracteres; usa una larga). Ver la sección 6. En el stack de desarrollo las cuentas demo existen por diseño; en **producción no se crean** (el administrador inicial se declara con `SCIAD_ADMIN_EMAIL` / `SCIAD_ADMIN_PASSWORD`).
 Además, los puertos de desarrollo (8080 y 3000) solo escuchan en `127.0.0.1`: ni la API ni Swagger quedan visibles en tu red local; el celular entra únicamente por el túnel HTTPS.
 
 ⚠ Mientras el túnel esté encendido la URL es pública. Úsalo solo para pruebas y no compartas la URL. Para uso real: VPS con dominio y TLS (`DESPLIEGUE.md`).
@@ -52,13 +52,29 @@ Además, los puertos de desarrollo (8080 y 3000) solo escuchan en `127.0.0.1`: n
   Quien entra a una 2.ª zona el mismo día, o sale y vuelve a entrar, también recibe ese aviso. Para repetir pruebas el mismo día usa otra persona.
 - **Horas**: el sistema trabaja en **hora de Guatemala (UTC-6)**; el día cambia a medianoche local, no a las 18:00.
 - Las listas (historial, notificaciones, auditoría, reportes) muestran hasta **100** filas; usa los filtros para acotar.
+- **Accesos del turno** (y **Accesos de hoy** del Admin) muestra **una fila por persona y zona** con su último movimiento del día
+  (IN/OUT y hora) y los contadores Dentro / Fuera / Total.
+- **Inicio de sesión y bloqueo**: desde un mismo equipo se aceptan **5 intentos de inicio de sesión cada 5 minutos** (al superarlos:
+  «No se pudo iniciar sesión. Intenta de nuevo.», HTTP 429). Por separado, **10 intentos fallidos en 15 minutos bloquean la cuenta 10 minutos**
+  (mientras dure, responde igual que una contraseña incorrecta). La sesión dura 8 horas; para salir usa **Salir** al pie del menú lateral.
 
-## 6. Si algo no funciona
+## 6. Tareas del administrador
+- **Cambiar la contraseña de un usuario**: **Usuarios** → lápiz → **Nueva contraseña (dejar en blanco para no cambiarla)** → **Guardar**.
+  Mismas reglas que al crear (8 a 72 caracteres). En blanco no cambia nada. El usuario entra desde ese momento con la nueva; si el
+  administrador cambia la suya, conserva la sesión abierta.
+- **Reemitir una credencial QR**: **Credenciales QR** → ícono de flechas (**Reemitir**) en una credencial activa → confirmar. En una sola
+  operación la credencial actual queda **revocada con motivo «Reemisión»** y se emite una nueva con otro token; el gafete anterior deja de
+  funcionar en el punto de acceso («Credencial revocada»). También aparece en la credencial revocada más reciente de una persona que ya no
+  tiene ninguna activa. Se rechaza si la persona está inactiva.
+- **Reportes CSV**: en **Generar reporte**, **Persona** y **Zona** empiezan en **«Todas las personas»** / **«Todas las zonas»** (sin filtro);
+  elige una persona o zona solo para acotar el CSV.
+
+## 7. Si algo no funciona
 | Síntoma | Causa y solución |
 |---|---|
 | «La cámara solo funciona en HTTPS» | Abriste `http://192.168.x.x`. Usa `localhost` en la PC o el túnel HTTPS en el celular. |
 | «Se bloqueó el permiso de la cámara» | Candado de la barra de direcciones → Cámara → Permitir; recarga. En iPhone: Ajustes → Safari → Cámara. |
 | No lee el QR | Más luz, acércalo/aléjalo, evita reflejos; usa la linterna (🔦) o «Leer desde foto». |
 | «Sin conexión» | El celular perdió red o el stack está apagado: `docker compose ps`. |
-| Login bloqueado (429) | Límite de intentos; espera 5 min. |
+| Login bloqueado | «No se pudo iniciar sesión. Intenta de nuevo.» (429): 5 intentos en 5 min desde ese equipo; espera 5 min. Si la contraseña correcta da «Credenciales incorrectas» tras muchos fallos, la cuenta quedó bloqueada 10 min. |
 | La URL del túnel no aparece | `docker compose -f docker-compose.yml -f docker-compose.tunnel.yml logs tunnel`. |
