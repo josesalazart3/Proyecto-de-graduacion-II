@@ -1,5 +1,5 @@
 // Generación de la imagen QR de una credencial (descarga PNG e impresión de gafete).
-// El QR codifica únicamente el token de 64 hex; el nombre del titular solo aparece en el gafete
+// El QR codifica únicamente el sobre cifrado «SCIAD1.…» que entrega el servidor; el nombre del titular solo aparece en el gafete
 // impreso, nunca dentro del código (RNF-01 / RNF-10).
 
 /** Escapa texto para insertarlo en HTML (el gafete se arma como HTML en un iframe). */
@@ -40,9 +40,9 @@ export function safeFileName(s: string): string {
   return base || 'credencial';
 }
 
-/** Descarga el QR como PNG. */
-export async function descargarQrPng(token: string, titular: string): Promise<void> {
-  const url = await qrDataUrl(token, 720);
+/** Descarga el QR (sobre cifrado) como PNG. */
+export async function descargarQrPng(qr: string, titular: string): Promise<void> {
+  const url = await qrDataUrl(qr, 720);
   const a = document.createElement('a');
   a.href = url;
   a.download = `QR_${safeFileName(titular)}.png`;
@@ -52,14 +52,15 @@ export async function descargarQrPng(token: string, titular: string): Promise<vo
 }
 
 export interface DatosGafete {
-  token: string;
+  qr: string; // sobre cifrado que va en el código
+  codigo: string; // código corto de la credencial (se imprime abreviado)
   titular: string;
   tipo: string; // Colaborador / Visitante
 }
 
 /** Abre el diálogo de impresión con el gafete (tarjeta de 86×54 mm aprox.). */
 export async function imprimirGafete(d: DatosGafete): Promise<void> {
-  const img = await qrDataUrl(d.token, 600);
+  const img = await qrDataUrl(d.qr, 600);
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Gafete</title>
 <style${cspNonce() ? ` nonce="${cspNonce()}"` : ''}>
   @page { size: auto; margin: 10mm; }
@@ -77,7 +78,7 @@ export async function imprimirGafete(d: DatosGafete): Promise<void> {
   <div class="brand">SCIAD</div>
   <img class="qr" src="${img}" alt="Código QR">
   <div><div class="name">${escapeHtml(d.titular)}</div><div class="tipo" style="text-align:center;margin-top:2mm">${escapeHtml(d.tipo)}</div></div>
-  <div class="tok">${escapeHtml(d.token.slice(0, 8))}…${escapeHtml(d.token.slice(-8))}</div>
+  <div class="tok">${escapeHtml(d.codigo)}…</div>
 </div></body></html>`;
 
   const iframe = document.createElement('iframe');

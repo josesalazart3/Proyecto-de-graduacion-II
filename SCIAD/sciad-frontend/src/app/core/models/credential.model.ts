@@ -1,6 +1,7 @@
 // Credenciales QR. Reconciliado al contrato real del backend (Fase 3).
-// CredencialDto: { id, personaId, personaNombre, dpiCodigo, token, estado, emitido, motivo, reemitidoDe }
-// estado: 'activa' | 'revocada' (nunca borrado físico). token = 64 caracteres hex (RNF-01).
+// CredencialDto: { id, personaId, personaNombre, dpiCodigo, tokenCorto, qr, estado, emitido, motivo, reemitidoDe }
+// estado: 'activa' | 'revocada' (nunca borrado físico). qr = sobre cifrado «SCIAD1.…» que va en el código QR
+// (RNF-01); el token completo no sale del servidor, solo tokenCorto (8 caracteres) para mostrar.
 
 export type CredencialEstado = 'activa' | 'revocada';
 
@@ -9,7 +10,8 @@ export interface Credencial {
   personaId: string;
   personaNombre: string;
   dpiCodigo: string;
-  token: string;
+  tokenCorto: string;
+  qr: string;
   estado: CredencialEstado;
   emitido: string; // ISO (yyyy-mm-dd)
   motivo?: string | null; // motivo de revocación, si aplica

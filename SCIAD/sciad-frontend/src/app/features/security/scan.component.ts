@@ -1,6 +1,6 @@
 // Escaneo QR (CU-04) con cámara real. Funciona en celular (BYOD) y en computadora (webcam).
 //
-// Flujo: elegir zona → apuntar la cámara al QR de la credencial → el token (64 hex) se envía a
+// Flujo: elegir zona → apuntar la cámara al QR de la credencial → su contenido (sobre cifrado «SCIAD1.…») se envía a
 // POST /registros-acceso {token, zonaId} → el servidor valida y decide ingreso/egreso → alerta
 // verde/roja a pantalla completa con sonido y vibración.
 //
@@ -8,7 +8,7 @@
 //  - El servidor ALTERNA ingreso/egreso en cada escaneo válido. Una cámara lee el mismo QR muchas
 //    veces por segundo, por eso `ScanGate` impide reenviar el mismo código (ver core/util/token.ts).
 //  - La cámara exige HTTPS (o localhost). Si no se cumple, se explica y se ofrece la alternativa
-//    de leer desde una foto o ingresar el token a mano.
+//    de leer desde una foto o pegar el código de la credencial a mano.
 import {
   AfterViewInit,
   Component,
@@ -157,7 +157,7 @@ const TITULOS_ERROR: Record<string, string> = {
           <div>
             <div class="ce-msg">{{ msg }}</div>
             @if (camErrorCode() === 'INSECURE') {
-              <div class="ce-sub">Mientras tanto puedes usar «Leer desde foto» o escribir el token.</div>
+              <div class="ce-sub">Mientras tanto puedes usar «Leer desde foto» o pegar el código en «Registro manual».</div>
             }
           </div>
         </div>
@@ -201,7 +201,8 @@ const TITULOS_ERROR: Record<string, string> = {
           <form [formGroup]="form" (ngSubmit)="submitManual()" class="manual-form">
             <input
               formControlName="token"
-              placeholder="Token QR de 64 caracteres"
+              placeholder="Pegue el código completo (SCIAD1.…)"
+              aria-label="Código completo de la credencial"
               class="token-input mono"
               autocomplete="off"
               autocapitalize="off"
@@ -486,7 +487,7 @@ export class ScanComponent implements OnInit, AfterViewInit, OnDestroy {
   protected submitManual(): void {
     const t = extractToken(this.form.controls.token.value);
     if (!t) {
-      this.mostrar({ ok: false, titulo: 'Token inválido', motivo: 'Debe tener 64 caracteres hexadecimales.' }, false);
+      this.mostrar({ ok: false, titulo: 'Código inválido', motivo: 'Pegue el código completo de la credencial (empieza con «SCIAD1.»).' }, false);
       return;
     }
     if (this.loading()) return;

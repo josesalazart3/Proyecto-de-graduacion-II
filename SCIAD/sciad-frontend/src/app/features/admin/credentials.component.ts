@@ -84,7 +84,7 @@ function badgeFor(estado: string): StatusKey {
                       <div class="cell-muted">{{ personaTipo(c.personaId) }}</div>
                     </td>
                     <td class="cell-muted hide-sm">{{ c.dpiCodigo }}</td>
-                    <td><span class="chip mono qr-token">{{ c.token }}</span></td>
+                    <td><span class="chip mono qr-token">{{ c.tokenCorto }}…</span></td>
                     <td class="cell-muted hide-md">{{ c.emitido }}</td>
                     <td><sci-badge [status]="badgeFor(c.estado)" /></td>
                     <td class="cell-muted hide-lg">{{ c.motivo ?? (c.estado === 'revocada' ? '—' : '') }}</td>
@@ -137,15 +137,15 @@ function badgeFor(estado: string): StatusKey {
       @if (selected(); as sel) {
         <div class="qr-view">
           <div class="qr-box" [class.qr-revoked]="sel.estado !== 'activa'">
-            <sci-qr [value]="sel.token" [size]="240" />
+            <sci-qr [value]="sel.qr" [size]="240" />
             @if (sel.estado !== 'activa') {
               <div class="qr-stamp">REVOCADA</div>
             }
           </div>
           <div class="qr-titular">{{ sel.personaNombre }}</div>
           <div class="qr-sub">{{ personaTipo(sel.personaId) }} · {{ estatusLabel() }}</div>
-          <div class="qr-code mono">{{ sel.token }}</div>
-          <p class="qr-note">El código contiene solo el token; no incluye datos personales.</p>
+          <div class="qr-code mono">{{ sel.tokenCorto }}…</div>
+          <p class="qr-note">El código QR va cifrado y no incluye datos personales.</p>
           <div class="qr-actions">
             <button sci-btn variant="secondary" size="md" iconName="download" (click)="descargar(sel)">Descargar PNG</button>
             <button sci-btn variant="primary" size="md" iconName="printer" (click)="imprimir(sel)" [disabled]="sel.estado !== 'activa'">Imprimir gafete</button>
@@ -270,7 +270,7 @@ export class CredentialsComponent implements OnInit {
         this.createOpen.set(false);
         this.selected.set(c);
         this.viewOpen.set(true);
-        this.toast.success('Credencial generada', `QR ${c.token.slice(0, 8)}… emitido.`);
+        this.toast.success('Credencial generada', `QR ${c.tokenCorto}… emitido.`);
         this.load();
       },
       error: (e) => {
@@ -317,7 +317,7 @@ export class CredentialsComponent implements OnInit {
     if (!window.confirm(aviso)) return;
     this.service.reemitir(c.id).subscribe({
       next: (updated) => {
-        this.toast.success('Credencial reemitida', `Nuevo QR ${updated.token.slice(0, 8)}…`);
+        this.toast.success('Credencial reemitida', `Nuevo QR ${updated.tokenCorto}…`);
         this.load();
       },
       error: (e) => this.toast.error('No se pudo reemitir', this.errorMessage(e) ?? 'Intente de nuevo.'),
@@ -331,7 +331,7 @@ export class CredentialsComponent implements OnInit {
 
   protected async descargar(c: Credencial): Promise<void> {
     try {
-      await descargarQrPng(c.token, c.personaNombre);
+      await descargarQrPng(c.qr, c.personaNombre);
     } catch {
       this.toast.error('Error', 'No se pudo generar la imagen del QR.');
     }
@@ -339,7 +339,7 @@ export class CredentialsComponent implements OnInit {
 
   protected async imprimir(c: Credencial): Promise<void> {
     try {
-      await imprimirGafete({ token: c.token, titular: c.personaNombre, tipo: this.personaTipo(c.personaId) });
+      await imprimirGafete({ qr: c.qr, codigo: c.tokenCorto, titular: c.personaNombre, tipo: this.personaTipo(c.personaId) });
     } catch {
       this.toast.error('Error', 'No se pudo preparar la impresión del gafete.');
     }

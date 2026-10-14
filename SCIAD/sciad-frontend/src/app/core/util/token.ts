@@ -1,17 +1,18 @@
 // Validación del contenido de un QR y control anti-doble-lectura.
 //
-// El QR de una credencial contiene ÚNICAMENTE el token (64 caracteres hexadecimales, RNF-01),
-// sin datos personales. El servidor alterna ingreso/egreso en cada escaneo válido, por eso una
-// cámara que lee en continuo NO debe enviar el mismo código varias veces seguidas: `ScanGate`
-// lo impide.
+// El QR de una credencial contiene ÚNICAMENTE el sobre cifrado que genera el servidor
+// («SCIAD1.» + 87 caracteres base64url, AES-256-GCM, RNF-01), sin datos personales. Aquí solo se
+// reconoce el formato: descifrarlo y validarlo le corresponde al servidor. El servidor alterna
+// ingreso/egreso en cada escaneo válido, por eso una cámara que lee en continuo NO debe enviar el
+// mismo código varias veces seguidas: `ScanGate` lo impide.
 
-export const TOKEN_RE = /^[0-9a-fA-F]{64}$/;
-const TOKEN_EMBEDDED_RE = /(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])/;
+export const TOKEN_RE = /^SCIAD1\.[A-Za-z0-9_-]{87}$/;
+const TOKEN_EMBEDDED_RE = /(?<![A-Za-z0-9_-])SCIAD1\.[A-Za-z0-9_-]{87}(?![A-Za-z0-9_-])/;
 
 /**
- * Extrae el token de lo que haya leído el lector. Acepta el token puro o (por tolerancia con
- * gafetes impresos con prefijo/URL) un token de 64 hex rodeado de otros caracteres.
- * Devuelve null si el contenido no contiene un token válido.
+ * Extrae el código de la credencial (sobre «SCIAD1.…») de lo que haya leído el lector. Acepta el
+ * sobre puro o (por tolerancia con gafetes impresos con prefijo/URL) rodeado de otros caracteres.
+ * Devuelve null si el contenido no contiene un código válido (p. ej. los QR antiguos de 64 hex).
  */
 export function extractToken(raw: string | null | undefined): string | null {
   if (!raw) return null;
